@@ -1,0 +1,62 @@
+# Build directories
+build/
+cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# Executables
+*.exe
+*.out
+iec61850_demo
+iec61850_client
+iec61850_tests
+
+# Libraries
+*.so
+*.dylib
+*.dll
+*.a
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+
+# GoogleTest
+googletest/
+
+# QEMU images or temp
+qemu/*.img
+qemu/*.qcow2
+
+# Scripts logs
+scripts/*.log
+
+# Documentation
+docs/html/
+docs/latex/
+docs/man/
+docs/rtf/
+docs/xml/
+
+# Other files from qemu
+*img
+user-data
+*qcow2
