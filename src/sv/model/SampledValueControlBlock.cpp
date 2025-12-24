@@ -1,14 +1,16 @@
 #include "sv/model/SampledValueControlBlock.h"
+#include <utility>
+#include <memory>
 
 using namespace sv;
 
 SampledValueControlBlock::Ptr SampledValueControlBlock::create(const std::string& name)
 {
-    return std::shared_ptr<SampledValueControlBlock>(new SampledValueControlBlock(name));
+    return std::make_shared<SampledValueControlBlock>(name);
 }
 
-SampledValueControlBlock::SampledValueControlBlock(const std::string& name)
-    : name_(name)
+SampledValueControlBlock::SampledValueControlBlock(std::string name)
+    : name_(std::move(name))
     , appId_(DEFAULT_APP_ID)
     , smpRate_(DEFAULT_SMP_RATE)
 {

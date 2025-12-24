@@ -1,6 +1,7 @@
 #include "sv/model/IedClient.h"
 #include <iostream>
 #include <mutex>
+#include <utility>
 #include "sv/network/NetworkReceiver.h"
 #include "sv/core/logging.h"
 #include "sv/core/logging.h"
@@ -19,12 +20,12 @@ IedClient::Ptr IedClient::create(IedModel::Ptr model, const std::string& interfa
             return nullptr;
         }
     }
-    return std::shared_ptr<IedClient>(new IedClient(model, iface));
+    return std::shared_ptr<IedClient>(new IedClient(std::move(model), iface));
 }
 
-IedClient::IedClient(IedModel::Ptr model, const std::string& interface)
-    : model_(model)
-    , interface_(interface)
+IedClient::IedClient(IedModel::Ptr model, std::string  interface)
+    : model_(std::move(model))
+    , interface_(std::move(interface))
 {
 }
 

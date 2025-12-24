@@ -8,6 +8,8 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <utility>
+#include <utility>
 
 using namespace sv;
 
@@ -23,12 +25,12 @@ IedServer::Ptr IedServer::create(IedModel::Ptr model, const std::string& interfa
             return nullptr;
         }
     }
-    return std::shared_ptr<IedServer>(new IedServer(model, iface));
+    return std::shared_ptr<IedServer>(new IedServer(std::move(model), iface));
 }
 
-IedServer::IedServer(IedModel::Ptr model, const std::string& interface)
-    : model_(model)
-    , interface_(interface)
+IedServer::IedServer(IedModel::Ptr model, std::string  interface)
+    : model_(std::move(model))
+    , interface_(std::move(interface))
     , running_(false)
 {
 }
@@ -77,7 +79,7 @@ void IedServer::stop()
     }
 }
 
-void IedServer::updateSampledValue(std::shared_ptr<SampledValueControlBlock> svcb, const std::vector<AnalogValue>& values)
+void IedServer::updateSampledValue(const std::shared_ptr<SampledValueControlBlock>& svcb, const std::vector<AnalogValue>& values)
 {
     try
     {

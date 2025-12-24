@@ -53,7 +53,7 @@ namespace sv
          * @brief Constructor is private. Use create() method.
          * @param interface The network interface name.
          */
-        EthernetNetworkSender(const std::string& interface);
+        EthernetNetworkSender(std::string  interface);
 
         std::string interface_;
         int socket_;

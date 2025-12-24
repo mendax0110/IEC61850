@@ -5,6 +5,7 @@
 #include <endian.h>
 #include <errno.h>
 #include <iostream>
+#include <utility>
 #include <linux/if_packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
@@ -37,7 +38,7 @@ std::string sv::getFirstEthernetInterface()
         int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) continue;
 
-        struct ifreq ifr;
+        struct ifreq ifr{};
         std::strncpy(ifr.ifr_name, ifa->ifa_name, IFNAMSIZ);
         if (ioctl(sock, SIOCGIFFLAGS, &ifr) == 0)
         {
@@ -60,8 +61,8 @@ std::unique_ptr<EthernetNetworkReceiver> EthernetNetworkReceiver::create(const s
     return std::make_unique<EthernetNetworkReceiver>(interface);
 }
 
-EthernetNetworkReceiver::EthernetNetworkReceiver(const std::string& interface)
-    : interface_(interface)
+EthernetNetworkReceiver::EthernetNetworkReceiver(std::string  interface)
+    : interface_(std::move(interface))
     , socket_(-1)
     , running_(false)
 {
@@ -71,7 +72,7 @@ EthernetNetworkReceiver::EthernetNetworkReceiver(const std::string& interface)
         throw std::runtime_error("Failed to create socket");
     }
 
-    struct ifreq ifr;
+    struct ifreq ifr{};
     std::strncpy(ifr.ifr_name, interface_.c_str(), IFNAMSIZ);
     if (ioctl(socket_, SIOCGIFINDEX, &ifr) < 0)
     {

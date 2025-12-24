@@ -1,15 +1,17 @@
 #include "sv/model/LogicalNode.h"
 #include "sv/model/SampledValueControlBlock.h"
+#include <memory>
+#include <utility>
 
 using namespace sv;
 
 LogicalNode::Ptr LogicalNode::create(const std::string& name)
 {
-    return std::shared_ptr<LogicalNode>(new LogicalNode(name));
+    return std::make_shared<LogicalNode>(name);
 }
 
-LogicalNode::LogicalNode(const std::string& name)
-    : name_(name)
+LogicalNode::LogicalNode(std::string  name)
+    : name_(std::move(name))
 {
 }
 
@@ -18,7 +20,7 @@ const std::string& LogicalNode::getName() const
     return name_;
 }
 
-void LogicalNode::addSampledValueControlBlock(std::shared_ptr<SampledValueControlBlock> svcb)
+void LogicalNode::addSampledValueControlBlock(const std::shared_ptr<SampledValueControlBlock>& svcb)
 {
     svcbs_.push_back(svcb);
 }

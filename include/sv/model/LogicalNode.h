@@ -36,7 +36,7 @@ namespace sv
          * @brief Adds a SampledValueControlBlock to this logical node.
          * @param svcb The control block to add.
          */
-        void addSampledValueControlBlock(std::shared_ptr<SampledValueControlBlock> svcb);
+        void addSampledValueControlBlock(const std::shared_ptr<SampledValueControlBlock>& svcb);
 
         /**
          * @brief Gets the list of SampledValueControlBlocks.
@@ -49,7 +49,7 @@ namespace sv
          * @brief Constructor is private. Use create() method.
          * @param name The name of the logical node.
          */
-        LogicalNode(const std::string& name);
+        LogicalNode(std::string  name);
 
         std::string name_;
         std::vector<std::shared_ptr<SampledValueControlBlock>> svcbs_;

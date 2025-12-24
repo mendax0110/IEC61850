@@ -47,7 +47,7 @@ namespace sv
          * @brief Constructor is private. Use create() method.
          * @param name The name of the model.
          */
-        IedModel(const std::string& name);
+        IedModel(std::string  name);
 
         std::string name_;
         std::vector<LogicalNode::Ptr> logicalNodes_;

@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <iostream>
 #include <linux/if_packet.h>
+#include <utility>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
@@ -19,8 +20,8 @@ std::unique_ptr<EthernetNetworkSender> EthernetNetworkSender::create(const std::
     return std::make_unique<EthernetNetworkSender>(interface);
 }
 
-EthernetNetworkSender::EthernetNetworkSender(const std::string& interface)
-    : interface_(interface)
+EthernetNetworkSender::EthernetNetworkSender(std::string  interface)
+    : interface_(std::move(interface))
     , socket_(-1)
 {
     socket_ = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -29,7 +30,7 @@ EthernetNetworkSender::EthernetNetworkSender(const std::string& interface)
         throw std::runtime_error("Failed to create socket");
     }
 
-    struct ifreq ifr;
+    struct ifreq ifr{};
     std::strncpy(ifr.ifr_name, interface_.c_str(), IFNAMSIZ);
     if (ioctl(socket_, SIOCGIFINDEX, &ifr) < 0)
     {

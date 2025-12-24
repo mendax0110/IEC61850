@@ -44,7 +44,7 @@ namespace sv
          * @param svcb The control block.
          * @param values The analog values.
          */
-        void updateSampledValue(std::shared_ptr<SampledValueControlBlock> svcb, const std::vector<AnalogValue>& values);
+        void updateSampledValue(const std::shared_ptr<SampledValueControlBlock>& svcb, const std::vector<AnalogValue>& values);
 
         /**
          * @brief Gets the model.
@@ -63,7 +63,7 @@ namespace sv
          * @param model The IED model.
          * @param interface The network interface.
          */
-        IedServer(IedModel::Ptr model, const std::string& interface);
+        IedServer(IedModel::Ptr model, std::string  interface);
 
         IedModel::Ptr model_;
         std::string interface_;

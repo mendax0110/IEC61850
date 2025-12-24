@@ -78,7 +78,7 @@ namespace sv
          * @brief Constructor is private. Use create() method.
          * @param name The name of the control block.
          */
-        SampledValueControlBlock(const std::string& name);
+        SampledValueControlBlock(std::string  name);
 
         std::string name_;
         std::string multicastAddress_;

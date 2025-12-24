@@ -50,7 +50,7 @@ namespace sv
          * @param model The IED model.
          * @param interface The network interface.
          */
-        IedClient(IedModel::Ptr model, const std::string& interface);
+        IedClient(IedModel::Ptr model, std::string  interface);
 
         IedModel::Ptr model_;
         std::string interface_;

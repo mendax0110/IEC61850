@@ -1,14 +1,17 @@
 #include "sv/model/IedModel.h"
 
+#include <memory>
+#include <utility>
+
 using namespace sv;
 
 IedModel::Ptr IedModel::create(const std::string& name)
 {
-    return std::shared_ptr<IedModel>(new IedModel(name));
+    return std::make_shared<IedModel>(name);
 }
 
-IedModel::IedModel(const std::string& name)
-    : name_(name)
+IedModel::IedModel(std::string  name)
+    : name_(std::move(name))
 {
 }
 
