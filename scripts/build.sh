@@ -7,7 +7,7 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 if [ ! -f Makefile ]; then
-    cmake ..
+    cmake -DBUILD_STATIC=ON ..
 fi
 
 make -j$(nproc)

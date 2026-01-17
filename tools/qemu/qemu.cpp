@@ -22,9 +22,9 @@ namespace fs = std::filesystem;
 
 namespace
 {
-    constexpr const char* QEMU_DIR = "tools/qemu";
-    constexpr const char* INITRAMFS_NAME = "initramfs.cpio.gz";
-    constexpr const char* KERNEL_NAME = "vmlinuz";
+    constexpr auto QEMU_DIR = "tools/qemu";
+    constexpr auto INITRAMFS_NAME = "initramfs.cpio.gz";
+    constexpr auto KERNEL_NAME = "vmlinuz";
     constexpr int VM_MEMORY_MB = 512;
 
     /**
@@ -99,6 +99,7 @@ namespace
                   << "  cleanup     Remove TAP interfaces and cleanup\n"
                   << "  status      Show VM and network status\n"
                   << "\nOptions:\n"
+                  << "  --include-build     Include built binaries in initramfs (for setup)\n"
                   << "  --interface <name>  Network interface (default: tap0/tap1)\n"
                   << "  --memory <MB>       VM memory in MB (default: " << VM_MEMORY_MB << ")\n"
                   << "  --kernel <path>     Custom kernel path\n"
@@ -124,18 +125,27 @@ namespace
            << "ip link set lo up\n"
            << "ip link set eth0 up 2>/dev/null\n"
            << "ip addr add 192.168.100.2/24 dev eth0 2>/dev/null\n"
-           << "echo 'Mounting host filesystem...'\n"
-           << "mount -t 9p -o trans=virtio,version=9p2000.L,msize=104857600 host0 /mnt/host\n"
+           << "echo 'Attempting to mount host filesystem...'\n"
+           << "mount -t 9p -o trans=virtio,version=9p2000.L,msize=104857600 host0 /mnt/host 2>/dev/null\n"
            << "if [ $? -eq 0 ]; then\n"
            << "  echo 'Host mounted at /mnt/host'\n"
            << "  export PATH=/mnt/host/build:$PATH\n"
+           << "  DEMO=/mnt/host/build/iec61850_demo\n"
+           << "  CLIENT=/mnt/host/build/iec61850_client\n"
            << "else\n"
-           << "  echo 'WARNING: 9p mount failed. Host filesystem not available.'\n"
+           << "  echo 'Note: 9p mount unavailable, using embedded binaries.'\n"
+           << "  DEMO=/opt/iec61850_demo\n"
+           << "  CLIENT=/opt/iec61850_client\n"
            << "fi\n"
+           << "export PATH=/opt:$PATH\n"
            << "echo ''\n"
            << "echo 'IEC61850 VM ready.'\n"
-           << "echo 'Run: /mnt/host/build/iec61850_demo (server)'\n"
-           << "echo '     /mnt/host/build/iec61850_client (client)'\n"
+           << "if [ -f \"$DEMO\" ]; then\n"
+           << "  echo \"Run: $DEMO (server)\"\n"
+           << "  echo \"     $CLIENT (client)\"\n"
+           << "else\n"
+           << "  echo 'Binaries not found. Run: qemu_tool setup --include-build'\n"
+           << "fi\n"
            << "echo ''\n"
            << "exec /bin/sh\n";
         return ss.str();
@@ -211,9 +221,10 @@ namespace
     /**
      * @brief Creates minimal initramfs with busybox
      * @param outputPath Output path for initramfs
+     * @param includeBuild Whether to include build directory contents
      * @return 0 on success, non-zero on failure
      */
-    int createInitramfs(const fs::path& outputPath)
+    int createInitramfs(const fs::path& outputPath, bool includeBuild = false)
     {
         fs::path tempDir = fs::temp_directory_path() / "iec61850_initramfs";
         fs::remove_all(tempDir);
@@ -221,7 +232,7 @@ namespace
 
         std::vector<std::string> dirs = {
             "bin", "sbin", "etc", "proc", "sys", "dev",
-            "usr/bin", "usr/sbin", "lib", "lib64", "mnt/host", "run"
+            "usr/bin", "usr/sbin", "lib", "lib64", "mnt/host", "run", "opt"
         };
 
         for (const auto& dir : dirs)
@@ -253,6 +264,44 @@ namespace
             }
         }
 
+        if (includeBuild)
+        {
+            fs::path buildDir = getProjectRoot() / "build";
+            fs::path optDir = tempDir / "opt";
+
+            std::vector<std::pair<std::string, std::string>> binaries = {
+                {"iec61850_demo_static", "iec61850_demo"},
+                {"iec61850_client_static", "iec61850_client"}
+            };
+
+            bool foundStatic = false;
+            for (const auto& [staticName, targetName] : binaries)
+            {
+                fs::path staticPath = buildDir / staticName;
+                fs::path dynamicPath = buildDir / targetName;
+
+                if (fs::exists(staticPath))
+                {
+                    fs::copy_file(staticPath, optDir / targetName, fs::copy_options::overwrite_existing);
+                    fs::permissions(optDir / targetName, fs::perms::owner_all | fs::perms::group_exec | fs::perms::others_exec);
+                    std::cout << "  Added " << staticName << " -> " << targetName << " (static)\n";
+                    foundStatic = true;
+                }
+                else if (fs::exists(dynamicPath))
+                {
+                    std::cerr << "  Warning: Only dynamic " << targetName << " found. Rebuild with -DBUILD_STATIC=ON\n";
+                    fs::copy_file(dynamicPath, optDir / targetName, fs::copy_options::overwrite_existing);
+                    fs::permissions(optDir / targetName, fs::perms::owner_all | fs::perms::group_exec | fs::perms::others_exec);
+                }
+            }
+
+            if (!foundStatic)
+            {
+                std::cerr << "\n  Note: Static binaries not found. Rebuild with:\n"
+                          << "    cmake -DBUILD_STATIC=ON .. && make\n\n";
+            }
+        }
+
         fs::path initPath = tempDir / "init";
         std::ofstream initFile(initPath);
         initFile << createInitScript(getProjectRoot() / "build");
@@ -277,6 +326,14 @@ namespace
      */
     std::string findKernel()
     {
+        fs::path root = getProjectRoot();
+        fs::path localKernel = root / QEMU_DIR / KERNEL_NAME;
+
+        if (fs::exists(localKernel))
+        {
+            return localKernel.string();
+        }
+
         std::vector<std::string> paths = {
             "/boot/vmlinuz-" + execCommand("uname -r"),
             "/boot/vmlinuz",
@@ -296,40 +353,78 @@ namespace
     /**
      * @brief Runs setup to prepare QEMU environment
      * @param root Project root
+     * @param includeBuild Whether to include build binaries in initramfs
      * @return 0 on success, non-zero on failure
      */
-    int runSetup(const fs::path& root)
+    int runSetup(const fs::path& root, bool includeBuild)
     {
         fs::path qemuDir = root / QEMU_DIR;
         fs::create_directories(qemuDir);
 
+        if (includeBuild)
+        {
+            fs::path buildDir = root / "build";
+            if (!fs::exists(buildDir / "iec61850_demo"))
+            {
+                std::cerr << "Error: Build directory not found or binaries missing.\n";
+                std::cerr << "Run ./scripts/build.sh first, then run setup --include-build\n";
+                return 1;
+            }
+            std::cout << "Including build binaries in initramfs...\n";
+        }
+
         fs::path initramfsPath = qemuDir / INITRAMFS_NAME;
-        int result = createInitramfs(initramfsPath);
+        int result = createInitramfs(initramfsPath, includeBuild);
         if (result != 0)
         {
             return result;
         }
 
         std::string kernel = findKernel();
-        if (kernel.empty())
+        fs::path localKernel = qemuDir / KERNEL_NAME;
+
+        if (!fs::exists(localKernel))
         {
-            std::cerr << "Warning: No kernel found. You may need to specify --kernel\n";
+            if (kernel.empty())
+            {
+                std::cerr << "Warning: No kernel found. You may need to specify --kernel\n";
+            }
+            else
+            {
+                std::cout << "Kernel found: " << kernel << "\n";
+                std::cout << "Copying kernel to " << localKernel << " (requires sudo)...\n";
+                std::string copyCmd = "sudo cp " + kernel + " " + localKernel.string() +
+                                      " && sudo chmod 644 " + localKernel.string();
+                if (system(copyCmd.c_str()) != 0)
+                {
+                    std::cerr << "Warning: Could not copy kernel. You may need to run VMs as root.\n";
+                }
+                else
+                {
+                    std::cout << "Kernel copied successfully.\n";
+                }
+            }
         }
         else
         {
-            std::cout << "Kernel found: " << kernel << "\n";
-            std::string check9p = execCommand("grep -q 9P /boot/config-$(uname -r) 2>/dev/null && echo yes || echo no");
-            if (check9p != "yes")
-            {
-                std::cout << "Note: Kernel 9p support status unknown. If mount fails, ensure kernel has 9P_FS enabled.\n";
-            }
+            std::cout << "Using existing kernel: " << localKernel << "\n";
         }
 
-        std::cout << "\nSetup complete. Next steps:\n"
-                  << "  1. Build project: ./scripts/build.sh\n"
-                  << "  2. Setup network (as root): sudo ./build/qemu_tool network\n"
-                  << "  3. Start VMs: ./build/qemu_tool server\n"
-                  << "                ./build/qemu_tool client\n";
+        std::cout << "\nSetup complete. Next steps:\n";
+        if (!includeBuild)
+        {
+            std::cout << "  1. Build project: ./scripts/build.sh\n"
+                      << "  2. Re-run setup with binaries: ./build/qemu_tool setup --include-build\n"
+                      << "  3. Setup network (as root): sudo ./build/qemu_tool network\n"
+                      << "  4. Start VMs: ./build/qemu_tool server\n"
+                      << "                ./build/qemu_tool client\n";
+        }
+        else
+        {
+            std::cout << "  1. Setup network (as root): sudo ./build/qemu_tool network\n"
+                      << "  2. Start VMs: ./build/qemu_tool server\n"
+                      << "                ./build/qemu_tool client\n";
+        }
         return 0;
     }
 
@@ -417,6 +512,7 @@ int main(int argc, char* argv[])
     std::string tapInterface;
     std::string kernelPath;
     int memoryMb = VM_MEMORY_MB;
+    bool includeBuild = false;
 
     for (int i = 2; i < argc; ++i)
     {
@@ -433,11 +529,15 @@ int main(int argc, char* argv[])
         {
             kernelPath = argv[++i];
         }
+        else if (arg == "--include-build")
+        {
+            includeBuild = true;
+        }
     }
 
     if (command == "setup")
     {
-        return runSetup(root);
+        return runSetup(root, includeBuild);
     }
     else if (command == "server")
     {

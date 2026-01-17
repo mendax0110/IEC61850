@@ -60,3 +60,5 @@ docs/xml/
 *img
 user-data
 *qcow2
+initramfs.cpio.gz
+vmlinuz

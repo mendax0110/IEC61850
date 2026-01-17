@@ -85,7 +85,7 @@ void IedServer::updateSampledValue(const std::shared_ptr<SampledValueControlBloc
         ASSERT(!values.empty(), "Values are empty");
 
         ASDU asdu;
-        asdu.svID = svcb->getDataSet(); // Or proper svID
+        asdu.svID = svcb->getName();
         static std::atomic<uint16_t> smpCnt{0};
         asdu.smpCnt = smpCnt.fetch_add(1);
         asdu.confRev = 1;

@@ -35,8 +35,14 @@ make -j$(nproc)
 For testing SV communication between isolated VMs using lightweight initramfs-based boot:
 
 ```bash
-# Setup QEMU environment (creates minimal initramfs)
+# Initial setup (copies kernel, requires sudo)
 ./build/qemu_tool setup
+
+# Build the project
+./scripts/build.sh
+
+# Re-run setup to include binaries in initramfs
+./build/qemu_tool setup --include-build
 
 # Setup network interfaces (requires root)
 sudo ./build/qemu_tool network
@@ -51,11 +57,10 @@ sudo ./build/qemu_tool network
 sudo ./build/qemu_tool cleanup
 ```
 
-Inside each VM, the project is mounted at `/mnt/host`:
+Inside each VM, binaries are available at `/opt/`:
 ```bash
-cd /mnt/host/build
-./iec61850_demo    # Server
-./iec61850_client  # Client
+/opt/iec61850_demo    # Server
+/opt/iec61850_client  # Client
 ```
 
 ### QEMU Tool Options
@@ -72,6 +77,7 @@ Commands:
   status      Show VM and network status
 
 Options:
+  --include-build     Include built binaries in initramfs (for setup)
   --interface <name>  Network interface (default: tap0/tap1)
   --memory <MB>       VM memory (default: 512)
   --kernel <path>     Custom kernel path

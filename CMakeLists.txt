@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_QEMU "Build QEMU simulations" ON)
 option(BUILD_DOCS "Build documentation with Doxygen" ON)
+option(BUILD_STATIC "Build static binaries for QEMU" OFF)
 
 include_directories(include)
 file(GLOB_RECURSE SOURCES "src/**/*.cpp")
@@ -19,6 +20,20 @@ target_link_libraries(iec61850_demo iec61850_sv)
 
 add_executable(iec61850_client src/client.cpp)
 target_link_libraries(iec61850_client iec61850_sv)
+
+if(BUILD_STATIC)
+    add_library(iec61850_sv_static STATIC ${SOURCES})
+    target_include_directories(iec61850_sv_static PUBLIC include)
+    target_compile_options(iec61850_sv_static PRIVATE -Wall -Wextra -Wpedantic)
+
+    add_executable(iec61850_demo_static src/main.cpp)
+    target_link_libraries(iec61850_demo_static iec61850_sv_static -static)
+    set_target_properties(iec61850_demo_static PROPERTIES OUTPUT_NAME "iec61850_demo_static")
+
+    add_executable(iec61850_client_static src/client.cpp)
+    target_link_libraries(iec61850_client_static iec61850_sv_static -static)
+    set_target_properties(iec61850_client_static PROPERTIES OUTPUT_NAME "iec61850_client_static")
+endif()
 
 if(BUILD_QEMU)
     add_executable(qemu_tool tools/qemu/qemu.cpp)
