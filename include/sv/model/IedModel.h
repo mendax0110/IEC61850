@@ -28,26 +28,26 @@ namespace sv
          * @brief Adds a LogicalNode to the model.
          * @param ln The logical node to add.
          */
-        void addLogicalNode(LogicalNode::Ptr ln);
+        void addLogicalNode(const LogicalNode::Ptr &ln);
 
         /**
          * @brief Gets the list of LogicalNodes.
          * @return Vector of shared pointers to LogicalNodes.
          */
-        const std::vector<LogicalNode::Ptr>& getLogicalNodes() const;
+        [[nodiscard]] const std::vector<LogicalNode::Ptr>& getLogicalNodes() const;
 
         /**
          * @brief Gets the name of the model.
          * @return The name.
          */
-        const std::string& getName() const;
+        [[nodiscard]] const std::string& getName() const;
 
-    public:
+    private:
         /**
          * @brief Constructor is private. Use create() method.
          * @param name The name of the model.
          */
-        IedModel(std::string  name);
+        explicit IedModel(std::string name);
 
         std::string name_;
         std::vector<LogicalNode::Ptr> logicalNodes_;

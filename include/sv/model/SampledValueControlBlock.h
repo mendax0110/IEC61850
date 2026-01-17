@@ -35,7 +35,7 @@ namespace sv
          * @brief Gets the multicast address.
          * @return The MAC address.
          */
-        const std::string& getMulticastAddress() const;
+        [[nodiscard]] const std::string& getMulticastAddress() const;
 
         /**
          * @brief Sets the AppID.
@@ -47,7 +47,7 @@ namespace sv
          * @brief Gets the AppID.
          * @return The AppID.
          */
-        uint16_t getAppId() const;
+        [[nodiscard]] uint16_t getAppId() const;
 
         /**
          * @brief Sets the sampling rate.
@@ -59,7 +59,7 @@ namespace sv
          * @brief Gets the sampling rate.
          * @return The sampling rate.
          */
-        uint16_t getSmpRate() const;
+        [[nodiscard]] uint16_t getSmpRate() const;
 
         /**
          * @brief Sets the DataSet reference.
@@ -71,14 +71,20 @@ namespace sv
          * @brief Gets the DataSet reference.
          * @return The DataSet name.
          */
-        const std::string& getDataSet() const;
+        [[nodiscard]] const std::string& getDataSet() const;
 
-    public:
+        /**
+         * @brief Gets the name of the control block.
+         * @return The name.
+         */
+        [[nodiscard]] const std::string& getName() const;
+
+    private:
         /**
          * @brief Constructor is private. Use create() method.
          * @param name The name of the control block.
          */
-        SampledValueControlBlock(std::string  name);
+        explicit SampledValueControlBlock(std::string name);
 
         std::string name_;
         std::string multicastAddress_;

@@ -30,7 +30,7 @@ namespace sv
         /**
          * @brief Stops the client.
          */
-        void stop();
+        void stop() const;
 
         /**
          * @brief Receives sampled values.
@@ -42,7 +42,7 @@ namespace sv
          * @brief Gets the model.
          * @return The IED model.
          */
-        IedModel::Ptr getModel() const;
+        [[nodiscard]] IedModel::Ptr getModel() const;
 
     private:
         /**

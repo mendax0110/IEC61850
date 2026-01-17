@@ -37,7 +37,8 @@ namespace sv
     };
 
     /**
-     * @brief 
+     * @brief Gets the first available ethernet interface.
+     * @return Interface name or empty string if none found.
      */
     std::string getFirstEthernetInterface();
 
@@ -57,7 +58,7 @@ namespace sv
          * @param callback Function to call when an ASDU is received.
          */
         void start(Callback callback) override;
-        
+
         /**
          * @brief Stops receiving.
          */
@@ -68,12 +69,12 @@ namespace sv
          */
         ~EthernetNetworkReceiver() override;
 
-    public:
+    private:
         /**
          * @brief Constructor is private. Use create() method.
          * @param interface The network interface.
          */
-        EthernetNetworkReceiver(std::string  interface);
+        explicit EthernetNetworkReceiver(std::string interface);
 
         std::string interface_;
         int socket_;

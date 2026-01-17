@@ -1,17 +1,13 @@
 #!/bin/bash
+set -e
 
-if [ ! -d build ]; then
-    mkdir build
-fi
+BUILD_DIR="build"
 
-if [ -f build/Makefile ]; then
-    echo "Build directory already configured."
-else
-    echo "Configuring build directory..."
-    cd build
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+if [ ! -f Makefile ]; then
     cmake ..
-    cd ..
 fi
 
-cd build
 make -j$(nproc)

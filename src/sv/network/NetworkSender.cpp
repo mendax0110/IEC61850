@@ -17,10 +17,10 @@ using namespace sv;
 
 std::unique_ptr<EthernetNetworkSender> EthernetNetworkSender::create(const std::string& interface)
 {
-    return std::make_unique<EthernetNetworkSender>(interface);
+    return std::unique_ptr<EthernetNetworkSender>(new EthernetNetworkSender(interface));
 }
 
-EthernetNetworkSender::EthernetNetworkSender(std::string  interface)
+EthernetNetworkSender::EthernetNetworkSender(std::string interface)
     : interface_(std::move(interface))
     , socket_(-1)
 {
@@ -72,7 +72,7 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
         size_t offset = 0;
 
         // Destination MAC from multicast address
-        std::string macStr = svcb->getMulticastAddress();
+        const std::string macStr = svcb->getMulticastAddress();
         uint8_t destMac[6];
         if (sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
                    &destMac[0], &destMac[1], &destMac[2], &destMac[3], &destMac[4], &destMac[5]) != 6)
@@ -84,22 +84,22 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
         offset += 6;
 
         // Source MAC (placeholder)
-        uint8_t srcMac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        const uint8_t srcMac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
         std::memcpy(frame + offset, srcMac, 6);
         offset += 6;
 
         // EtherType
-        uint16_t etherType = SV_ETHER_TYPE;
+        const uint16_t etherType = SV_ETHER_TYPE;
         *reinterpret_cast<uint16_t*>(frame + offset) = htons(etherType);
         offset += 2;
 
         // AppID
-        uint16_t appId = svcb->getAppId();
+        const uint16_t appId = svcb->getAppId();
         *reinterpret_cast<uint16_t*>(frame + offset) = htons(appId);
         offset += 2;
 
         // Length (placeholder, calculate later)
-        uint16_t lengthPos = offset;
+        const uint16_t lengthPos = offset;
         offset += 2;
 
         // Reserved
@@ -143,12 +143,12 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
         }
 
         // Timestam
-        auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(asdu.timestamp.time_since_epoch()).count();
+        const auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(asdu.timestamp.time_since_epoch()).count();
         *reinterpret_cast<uint64_t*>(frame + offset) = htobe64(ts);
         offset += 8;
 
         // Set length
-        uint16_t length = offset - 14; // Eth header
+        const uint16_t length = offset - 14; // Eth header
         *reinterpret_cast<uint16_t*>(frame + lengthPos) = htons(length);
 
         // Send
@@ -162,7 +162,7 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
         addr.sll_halen = ETH_ALEN;
         std::memcpy(addr.sll_addr, destMac, ETH_ALEN);
 
-        ssize_t sent = sendto(socket_, frame, offset, 0, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
+        const ssize_t sent = sendto(socket_, frame, offset, 0, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
         if (sent < 0)
         {
             LOG_ERROR("Send failed: " + std::string(strerror(errno)));

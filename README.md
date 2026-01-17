@@ -10,8 +10,6 @@ Install all required dependencies:
 ./install_deps.sh
 ```
 
-This installs build tools, QEMU, network utilities, and documentation tools.
-
 ## Building
 
 ```bash
@@ -21,10 +19,9 @@ This installs build tools, QEMU, network utilities, and documentation tools.
 Or manually:
 
 ```bash
-mkdir build
-cd build
+mkdir build && cd build
 cmake ..
-make
+make -j$(nproc)
 ```
 
 ## Running
@@ -33,40 +30,49 @@ make
 ./build/iec61850_demo
 ```
 
-## Testing with Virtual Network
-
-To test the SV communication in a virtual network:
-
-```bash
-./scripts/test_network.sh
-```
-
-This sets up network namespaces with veth pairs and runs the server and client.
-
 ## QEMU Virtualization
 
-To test in virtualized environments:
+For testing SV communication between isolated VMs using lightweight initramfs-based boot:
 
-1. Install deps: `./install_deps.sh`
-2. Create VM image: `./qemu/create_image.sh`
-3. Setup network: `./qemu/setup_network.sh`
-4. Start server VM: `./qemu/start_server_vm.sh`
-5. Start client VM: `./qemu/start_client_vm.sh`
-
-The VMs mount the host repo at `/mnt/host`. In VM:
 ```bash
-sudo mount -t 9p -o trans=virtio host0 /mnt/host
+# Setup QEMU environment (creates minimal initramfs)
+./build/qemu_tool setup
+
+# Setup network interfaces (requires root)
+sudo ./build/qemu_tool network
+
+# Start server VM (in terminal 1)
+./build/qemu_tool server
+
+# Start client VM (in terminal 2)
+./build/qemu_tool client
+
+# Cleanup network when done
+sudo ./build/qemu_tool cleanup
+```
+
+Inside each VM, the project is mounted at `/mnt/host`:
+```bash
 cd /mnt/host/build
-./iec61850_demo  # Server
+./iec61850_demo    # Server
 ./iec61850_client  # Client
 ```
 
-The VMs will automatically clone, build, and run the IEC61850 code via cloud-init.
+### QEMU Tool Options
 
-## Architecture
+```
+qemu_tool <command> [options]
 
-- **Core**: Data types and structures (ASDU, AnalogValue, etc.)
-- **Model**: IED model, Logical Nodes, SampledValueControlBlocks
-- **Network**: Ethernet-based sender for SV frames
+Commands:
+  setup       Create initramfs and prepare QEMU environment
+  server      Start server VM
+  client      Start client VM  
+  network     Setup TAP network interfaces
+  cleanup     Remove TAP interfaces
+  status      Show VM and network status
 
-Uses smart pointers, RAII, and modular design for extensibility.
+Options:
+  --interface <name>  Network interface (default: tap0/tap1)
+  --memory <MB>       VM memory (default: 512)
+  --kernel <path>     Custom kernel path
+```

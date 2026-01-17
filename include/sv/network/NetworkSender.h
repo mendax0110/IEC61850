@@ -48,12 +48,12 @@ namespace sv
          */
         ~EthernetNetworkSender() override;
 
-    public:
+    private:
         /**
          * @brief Constructor is private. Use create() method.
          * @param interface The network interface name.
          */
-        EthernetNetworkSender(std::string  interface);
+        explicit EthernetNetworkSender(std::string interface);
 
         std::string interface_;
         int socket_;

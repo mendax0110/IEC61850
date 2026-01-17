@@ -19,7 +19,7 @@ using namespace sv;
 
 std::string sv::getFirstEthernetInterface()
 {
-    struct ifaddrs *ifaddr, *ifa;
+    ifaddrs *ifaddr, *ifa;
     std::string result;
 
     if (getifaddrs(&ifaddr) == -1)
@@ -35,7 +35,7 @@ std::string sv::getFirstEthernetInterface()
         if (strcmp(ifa->ifa_name, "lo") == 0) continue;  // Skip loopback
 
         //check if iss up and not loopback
-        int sock = socket(AF_INET, SOCK_DGRAM, 0);
+        const int sock = socket(AF_INET, SOCK_DGRAM, 0);
         if (sock < 0) continue;
 
         struct ifreq ifr{};
@@ -58,10 +58,10 @@ std::string sv::getFirstEthernetInterface()
 
 std::unique_ptr<EthernetNetworkReceiver> EthernetNetworkReceiver::create(const std::string& interface)
 {
-    return std::make_unique<EthernetNetworkReceiver>(interface);
+    return std::unique_ptr<EthernetNetworkReceiver>(new EthernetNetworkReceiver(interface));
 }
 
-EthernetNetworkReceiver::EthernetNetworkReceiver(std::string  interface)
+EthernetNetworkReceiver::EthernetNetworkReceiver(std::string interface)
     : interface_(std::move(interface))
     , socket_(-1)
     , running_(false)
@@ -80,7 +80,7 @@ EthernetNetworkReceiver::EthernetNetworkReceiver(std::string  interface)
         throw std::runtime_error("Failed to get interface index");
     }
 
-    struct sockaddr_ll addr;
+    sockaddr_ll addr;
     addr.sll_family = AF_PACKET;
     addr.sll_protocol = htons(ETH_P_ALL);
     addr.sll_ifindex = ifr.ifr_ifindex;
@@ -120,7 +120,7 @@ void EthernetNetworkReceiver::start(Callback callback)
             uint8_t buffer[1500];
             while (running_.load())
             {
-                ssize_t len = recv(socket_, buffer, sizeof(buffer), 0);
+                const ssize_t len = recv(socket_, buffer, sizeof(buffer), 0);
                 if (len < 0)
                 {
                     if (errno != EAGAIN)
@@ -129,7 +129,7 @@ void EthernetNetworkReceiver::start(Callback callback)
                     }
                     continue;
                 }
-                size_t len_size = static_cast<size_t>(len);
+                const auto len_size = static_cast<size_t>(len);
                 if (len_size < 14 + 8) // Minimum size
                 {
                     continue;
@@ -139,7 +139,7 @@ void EthernetNetworkReceiver::start(Callback callback)
                     LOG_ERROR("Frame too short");
                     continue;
                 }
-                uint16_t etherType = ntohs(*reinterpret_cast<uint16_t*>(buffer + 12));
+                const uint16_t etherType = ntohs(*reinterpret_cast<uint16_t*>(buffer + 12));
                 if (etherType != SV_ETHER_TYPE)
                 {
                     continue;
@@ -179,7 +179,7 @@ void EthernetNetworkReceiver::start(Callback callback)
                     val.value = static_cast<int16_t>(ntohs(*reinterpret_cast<uint16_t*>(buffer + offset)));
                     offset += 2;
                     // Quality
-                    uint8_t quality = buffer[offset++];
+                    const uint8_t quality = buffer[offset++];
                     val.quality.validity = quality & 0x80;
                     val.quality.overflow = quality & 0x40;
                     asdu.dataSet.push_back(val);

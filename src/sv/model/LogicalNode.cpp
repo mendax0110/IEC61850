@@ -7,10 +7,10 @@ using namespace sv;
 
 LogicalNode::Ptr LogicalNode::create(const std::string& name)
 {
-    return std::make_shared<LogicalNode>(name);
+    return Ptr(new LogicalNode(name));
 }
 
-LogicalNode::LogicalNode(std::string  name)
+LogicalNode::LogicalNode(std::string name)
     : name_(std::move(name))
 {
 }

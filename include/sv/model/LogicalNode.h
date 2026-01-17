@@ -42,14 +42,14 @@ namespace sv
          * @brief Gets the list of SampledValueControlBlocks.
          * @return Vector of shared pointers to SVCBs.
          */
-        const std::vector<std::shared_ptr<SampledValueControlBlock>>& getSampledValueControlBlocks() const;
+        [[nodiscard]] const std::vector<std::shared_ptr<SampledValueControlBlock>>& getSampledValueControlBlocks() const;
 
-    public:
+    private:
         /**
          * @brief Constructor is private. Use create() method.
          * @param name The name of the logical node.
          */
-        LogicalNode(std::string  name);
+        explicit LogicalNode(std::string name);
 
         std::string name_;
         std::vector<std::shared_ptr<SampledValueControlBlock>> svcbs_;

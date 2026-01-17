@@ -20,6 +20,12 @@ target_link_libraries(iec61850_demo iec61850_sv)
 add_executable(iec61850_client src/client.cpp)
 target_link_libraries(iec61850_client iec61850_sv)
 
+if(BUILD_QEMU)
+    add_executable(qemu_tool tools/qemu/qemu.cpp)
+    target_compile_features(qemu_tool PRIVATE cxx_std_17)
+    target_compile_options(qemu_tool PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 target_include_directories(iec61850_sv PUBLIC include)
 target_compile_options(iec61850_sv PRIVATE -Wall -Wextra -Wpedantic)
 
@@ -27,10 +33,10 @@ if(BUILD_DOCS)
     find_package(Doxygen)
     if(DOXYGEN_FOUND)
         add_custom_target(docs
-            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            COMMENT "Generating API documentation with Doxygen"
-            VERBATIM
+                COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                COMMENT "Generating API documentation with Doxygen"
+                VERBATIM
         )
     else()
         message(WARNING "Doxygen not found. Documentation will not be built.")
@@ -40,9 +46,9 @@ endif()
 if(BUILD_TESTS)
     include(FetchContent)
     FetchContent_Declare(
-        googletest
-        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            googletest
+            URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(googletest)
 

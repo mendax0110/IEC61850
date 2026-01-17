@@ -1,14 +1,12 @@
 #include "sv/model/IedServer.h"
-#include "sv/core/types.h"
-#include "sv/core/logging.h"
-#include "sv/core/logging.h"
 #include "sv/model/SampledValueControlBlock.h"
 #include "sv/network/NetworkReceiver.h"
 #include "sv/network/NetworkSender.h"
+#include "sv/core/types.h"
+#include "sv/core/logging.h"
 #include <atomic>
 #include <chrono>
 #include <iostream>
-#include <utility>
 #include <utility>
 
 using namespace sv;
@@ -28,7 +26,7 @@ IedServer::Ptr IedServer::create(IedModel::Ptr model, const std::string& interfa
     return std::shared_ptr<IedServer>(new IedServer(std::move(model), iface));
 }
 
-IedServer::IedServer(IedModel::Ptr model, std::string  interface)
+IedServer::IedServer(IedModel::Ptr model, std::string interface)
     : model_(std::move(model))
     , interface_(std::move(interface))
     , running_(false)
@@ -79,7 +77,7 @@ void IedServer::stop()
     }
 }
 
-void IedServer::updateSampledValue(const std::shared_ptr<SampledValueControlBlock>& svcb, const std::vector<AnalogValue>& values)
+void IedServer::updateSampledValue(const std::shared_ptr<SampledValueControlBlock>& svcb, const std::vector<AnalogValue>& values) const
 {
     try
     {
@@ -115,7 +113,7 @@ IedModel::Ptr IedServer::getModel() const
     return model_;
 }
 
-void IedServer::run()
+void IedServer::run() const
 {
     while (running_.load())
     {

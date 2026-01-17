@@ -44,7 +44,7 @@ namespace sv
          * @param svcb The control block.
          * @param values The analog values.
          */
-        void updateSampledValue(const std::shared_ptr<SampledValueControlBlock>& svcb, const std::vector<AnalogValue>& values);
+        void updateSampledValue(const std::shared_ptr<SampledValueControlBlock>& svcb, const std::vector<AnalogValue>& values) const;
 
         /**
          * @brief Gets the model.
@@ -56,7 +56,7 @@ namespace sv
         /**
          * @brief Main sending loop.
          */
-        void run();
+        void run() const;
 
         /**
          * @brief Constructor is private. Use create() method.

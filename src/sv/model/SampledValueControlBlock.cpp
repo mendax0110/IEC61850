@@ -6,7 +6,7 @@ using namespace sv;
 
 SampledValueControlBlock::Ptr SampledValueControlBlock::create(const std::string& name)
 {
-    return std::make_shared<SampledValueControlBlock>(name);
+    return Ptr(new SampledValueControlBlock(name));
 }
 
 SampledValueControlBlock::SampledValueControlBlock(std::string name)
@@ -54,4 +54,9 @@ void SampledValueControlBlock::setDataSet(const std::string& dataSet)
 const std::string& SampledValueControlBlock::getDataSet() const
 {
     return dataSet_;
+}
+
+const std::string& SampledValueControlBlock::getName() const
+{
+    return name_;
 }
