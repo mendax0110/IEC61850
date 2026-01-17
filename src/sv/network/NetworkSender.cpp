@@ -61,7 +61,7 @@ EthernetNetworkSender::~EthernetNetworkSender()
     }
 }
 
-void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> svcb, const ASDU& asdu)
+void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBlock> svcb, const ASDU& asdu)
 {
     try
     {
@@ -89,7 +89,7 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
         offset += 6;
 
         // EtherType
-        const uint16_t etherType = SV_ETHER_TYPE;
+        constexpr uint16_t etherType = SV_ETHER_TYPE;
         *reinterpret_cast<uint16_t*>(frame + offset) = htons(etherType);
         offset += 2;
 
@@ -107,7 +107,7 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
 
         // PDU: ASDU
         // svID (string, assume up to 64 chars)
-        size_t svIdLen = std::min(asdu.svID.size(), size_t(64));
+        const size_t svIdLen = std::min(asdu.svID.size(), size_t(64));
         std::memcpy(frame + offset, asdu.svID.c_str(), svIdLen);
         offset += 64; // Fixed size in IEC?
 
@@ -123,23 +123,23 @@ void EthernetNetworkSender::sendASDU(std::shared_ptr<SampledValueControlBlock> s
         frame[offset++] = asdu.smpSynch ? 1 : 0;
 
         // DataSet
-        for (const auto& val : asdu.dataSet)
+        for (const auto&[value, quality] : asdu.dataSet)
         {
-            if (std::holds_alternative<int16_t>(val.value))
+            if (std::holds_alternative<int16_t>(value))
             {
-                int16_t v = std::get<int16_t>(val.value);
+                const int16_t v = std::get<int16_t>(value);
                 *reinterpret_cast<uint16_t*>(frame + offset) = htons(v);
                 offset += 2;
             }
-            else if (std::holds_alternative<float>(val.value))
+            else if (std::holds_alternative<float>(value))
             {
-                float v = std::get<float>(val.value);
-                uint32_t fv = *reinterpret_cast<uint32_t*>(&v);
+                float v = std::get<float>(value);
+                const uint32_t fv = *reinterpret_cast<uint32_t*>(&v);
                 *reinterpret_cast<uint32_t*>(frame + offset) = htonl(fv);
                 offset += 4;
             }
             // Quality
-            frame[offset++] = (val.quality.validity ? 0x80 : 0) | (val.quality.overflow ? 0x40 : 0);
+            frame[offset++] = (quality.validity ? 0x80 : 0) | (quality.overflow ? 0x40 : 0);
         }
 
         // Timestam

@@ -80,7 +80,7 @@ EthernetNetworkReceiver::EthernetNetworkReceiver(std::string interface)
         throw std::runtime_error("Failed to get interface index");
     }
 
-    sockaddr_ll addr;
+    sockaddr_ll addr{};
     addr.sll_family = AF_PACKET;
     addr.sll_protocol = htons(ETH_P_ALL);
     addr.sll_ifindex = ifr.ifr_ifindex;
