@@ -1,17 +1,18 @@
 #include "sv/network/NetworkSender.h"
-#include <arpa/inet.h>
+#include "sv/core/logging.h"
+#include "sv/core/buffer.h"
+
 #include <cstring>
-#include <endian.h>
-#include <errno.h>
-#include <iostream>
+#include <array>
+#include <sstream>
+#include <algorithm>
+#include <arpa/inet.h>
+#include <cerrno>
 #include <linux/if_packet.h>
-#include <utility>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <unistd.h>
-#include "sv/core/logging.h"
 
 using namespace sv;
 
@@ -20,44 +21,135 @@ std::unique_ptr<EthernetNetworkSender> EthernetNetworkSender::create(const std::
     return std::unique_ptr<EthernetNetworkSender>(new EthernetNetworkSender(interface));
 }
 
+
 EthernetNetworkSender::EthernetNetworkSender(std::string interface)
     : interface_(std::move(interface))
-    , socket_(-1)
+    , socket_(socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL)))
+    , ifIndex_(0)
 {
-    socket_ = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    if (socket_ < 0)
+    if (socket_.get() < 0)
     {
-        throw std::runtime_error("Failed to create socket");
+        throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }
 
-    struct ifreq ifr{};
-    std::strncpy(ifr.ifr_name, interface_.c_str(), IFNAMSIZ);
-    if (ioctl(socket_, SIOCGIFINDEX, &ifr) < 0)
+    try
     {
-        close(socket_);
-        throw std::runtime_error("Failed to get interface index");
+        ifIndex_ = getInterfaceIndex();
+
+        struct sockaddr_ll addr{};
+        addr.sll_family = AF_PACKET;
+        addr.sll_protocol = htons(ETH_P_ALL);
+        addr.sll_ifindex = ifIndex_;
+        addr.sll_hatype = 0;
+        addr.sll_pkttype = 0;
+        addr.sll_halen = 0;
+
+        if (bind(socket_.get(), reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0)
+        {
+            throw std::runtime_error("Failed to bind socket to interface " + interface_ + ": " + std::string(strerror(errno)));
+        }
     }
-
-    struct sockaddr_ll addr;
-    addr.sll_family = AF_PACKET;
-    addr.sll_protocol = htons(ETH_P_ALL);
-    addr.sll_ifindex = ifr.ifr_ifindex;
-    addr.sll_hatype = 0;
-    addr.sll_pkttype = 0;
-    addr.sll_halen = 0;
-
-    if (bind(socket_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0)
+    catch (...)
     {
-        close(socket_);
-        throw std::runtime_error("Failed to bind socket");
+        throw;
     }
 }
 
-EthernetNetworkSender::~EthernetNetworkSender()
+std::array<uint8_t, 6> EthernetNetworkSender::parseMacAddress(const std::string& macStr) const
 {
-    if (socket_ >= 0)
+    std::array<uint8_t, 6> mac{};
+    std::istringstream iss(macStr);
+    std::string segment;
+    size_t index = 0;
+
+    while (std::getline(iss, segment, ':') && index < 6)
     {
-        close(socket_);
+        try
+        {
+            const unsigned long value = std::stoul(segment, nullptr, 16);
+            if (value > 0xFF)
+            {
+                throw std::invalid_argument("Invalid MAC address segment: " + segment);
+            }
+            mac[index++] = static_cast<uint8_t>(value);
+        }
+        catch (const std::invalid_argument&)
+        {
+            throw std::invalid_argument("Invalid MAC address format: " + macStr);
+        }
+        catch (const std::out_of_range&)
+        {
+            throw std::invalid_argument("MAC address segment out of range: " + segment);
+        }
+    }
+
+    if (index != 6)
+    {
+        throw std::invalid_argument("Incomplete MAC address: " + macStr);
+    }
+
+    return mac;
+}
+
+std::array<uint8_t, 6> EthernetNetworkSender::getSourceMacAddress() const
+{
+    struct ifreq ifr{};
+
+    const size_t copyLen = std::min(interface_.size(), static_cast<size_t>(IFNAMSIZ - 1));
+    std::copy_n(interface_.begin(), copyLen, ifr.ifr_name);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
+
+    if (ioctl(socket_.get(), SIOCGIFHWADDR, &ifr) < 0)
+    {
+        LOG_ERROR("Failed to get source MAC address for interface: " + interface_ + ": " + std::string(strerror(errno)));
+        return std::array<uint8_t, 6>{};
+    }
+
+    std::array<uint8_t, 6> mac{};
+    std::copy_n(reinterpret_cast<const uint8_t*>(ifr.ifr_hwaddr.sa_data), 6, mac.data());
+    return mac;
+}
+
+int EthernetNetworkSender::getInterfaceIndex() const
+{
+    struct ifreq ifr{};
+
+    const size_t copyLen = std::min(interface_.size(), static_cast<size_t>(IFNAMSIZ - 1));
+    std::copy_n(interface_.begin(), copyLen, ifr.ifr_name);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
+
+    if (ioctl(socket_.get(), SIOCGIFINDEX, &ifr) < 0)
+    {
+        throw std::runtime_error("Failed to get interface index for " + interface_ + ": " + std::string(strerror(errno)));
+    }
+
+    return ifr.ifr_ifindex;
+}
+
+void EthernetNetworkSender::sendFrame(const uint8_t* data, const size_t size, const std::array<uint8_t, 6>& destMac) const
+{
+    struct sockaddr_ll addr{};
+    addr.sll_family = AF_PACKET;
+    addr.sll_ifindex = ifIndex_;
+    addr.sll_halen = ETH_ALEN;
+    std::copy(destMac.begin(), destMac.end(), addr.sll_addr);
+
+    const ssize_t sent = sendto(socket_.get(), data, size, 0, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
+
+    if (sent < 0)
+    {
+        const std::string errorMsg = "Send failed: " + std::string(strerror(errno));
+        LOG_ERROR(errorMsg);
+        throw std::runtime_error(errorMsg);
+    }
+
+    if (static_cast<size_t>(sent) != size)
+    {
+        LOG_ERROR("Partial send: sent " + std::to_string(sent) + " of " + std::to_string(size) + " bytes");
+    }
+    else
+    {
+        LOG_INFO("Sent frame of " + std::to_string(sent) + " bytes");
     }
 }
 
@@ -66,114 +158,69 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
     try
     {
         ASSERT(svcb, "SVCB is null");
-        ASSERT(!asdu.svID.empty(), "svID is empty");
+        ASSERT(!asdu.svID.empty(), "ASDU svID is empty");
 
-        uint8_t frame[1500];
-        size_t offset = 0;
+        BufferWriter writer(1500);
 
-        // Destination MAC from multicast address
-        const std::string macStr = svcb->getMulticastAddress();
-        uint8_t destMac[6];
-        if (sscanf(macStr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
-                   &destMac[0], &destMac[1], &destMac[2], &destMac[3], &destMac[4], &destMac[5]) != 6)
-        {
-            LOG_ERROR("Invalid MAC address format: " + macStr);
-            return;
-        }
-        std::memcpy(frame + offset, destMac, 6);
-        offset += 6;
+        // dest mac address from multicast address
+        const auto destMac = parseMacAddress(svcb->getMulticastAddress());
+        writer.writeBytes(destMac.data(), destMac.size());
 
-        // Source MAC (placeholder)
-        const uint8_t srcMac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        std::memcpy(frame + offset, srcMac, 6);
-        offset += 6;
+        // source mac
+        const auto srcMac = getSourceMacAddress();
+        writer.writeBytes(srcMac.data(), srcMac.size());
 
-        // EtherType
-        constexpr uint16_t etherType = SV_ETHER_TYPE;
-        *reinterpret_cast<uint16_t*>(frame + offset) = htons(etherType);
-        offset += 2;
+        // ehternet type
+        writer.writeUint16(SV_ETHER_TYPE);
 
-        // AppID
-        const uint16_t appId = svcb->getAppId();
-        *reinterpret_cast<uint16_t*>(frame + offset) = htons(appId);
-        offset += 2;
+        // appID
+        writer.writeUint16(svcb->getAppId());
 
-        // Length (placeholder, calculate later)
-        const uint16_t lengthPos = offset;
-        offset += 2;
+        const size_t lengthPos = writer.size();
+        writer.writeUint16(0);
 
-        // Reserved
-        offset += 2;
+        // reversed (2 bytes)
+        writer.writeUint16(0);
 
-        // PDU: ASDU
-        // svID (string, assume up to 64 chars)
-        const size_t svIdLen = std::min(asdu.svID.size(), size_t(64));
-        std::memcpy(frame + offset, asdu.svID.c_str(), svIdLen);
-        offset += 64; // Fixed size in IEC?
+        // PDU: ASDU, svID 64 bytes
+        writer.writeFixedString(asdu.svID, 64);
 
         // smpCnt
-        *reinterpret_cast<uint16_t*>(frame + offset) = htons(asdu.smpCnt);
-        offset += 2;
+        writer.writeUint16(asdu.smpCnt);
 
         // confRev
-        *reinterpret_cast<uint32_t*>(frame + offset) = htonl(asdu.confRev);
-        offset += 4;
+        writer.writeUint32(asdu.confRev);
 
         // smpSynch
-        frame[offset++] = asdu.smpSynch ? 1 : 0;
+        writer.writeUint8(asdu.smpSynch ? 1 : 0);
 
-        // DataSet
-        for (const auto&[value, quality] : asdu.dataSet)
+        // dataSet values
+        for (const auto& [value, quality] : asdu.dataSet)
         {
             if (std::holds_alternative<int16_t>(value))
             {
-                const int16_t v = std::get<int16_t>(value);
-                *reinterpret_cast<uint16_t*>(frame + offset) = htons(v);
-                offset += 2;
+                writer.writeInt16(std::get<int16_t>(value));
             }
             else if (std::holds_alternative<float>(value))
             {
-                float v = std::get<float>(value);
-                const uint32_t fv = *reinterpret_cast<uint32_t*>(&v);
-                *reinterpret_cast<uint32_t*>(frame + offset) = htonl(fv);
-                offset += 4;
+                writer.writeFloat(std::get<float>(value));
             }
-            // Quality
-            frame[offset++] = (quality.validity ? 0x80 : 0) | (quality.overflow ? 0x40 : 0);
+
+            const uint8_t qualityByte = (quality.validity ? 0x80 : 0) | (quality.overflow ? 0x40 : 0);
+            writer.writeUint8(qualityByte);
         }
 
-        // Timestam
         const auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(asdu.timestamp.time_since_epoch()).count();
-        *reinterpret_cast<uint64_t*>(frame + offset) = htobe64(ts);
-        offset += 8;
+        writer.writeUint64(static_cast<uint64_t>(ts));
 
-        // Set length
-        const uint16_t length = offset - 14; // Eth header
-        *reinterpret_cast<uint16_t*>(frame + lengthPos) = htons(length);
+        const uint16_t length = static_cast<uint16_t>(writer.size() - 14);
+        writer.writeUint16At(lengthPos, length);
 
-        // Send
-        struct sockaddr_ll addr = {};
-        addr.sll_ifindex = if_nametoindex(interface_.c_str());
-        if (addr.sll_ifindex == 0)
-        {
-            LOG_ERROR("Invalid interface: " + interface_);
-            return;
-        }
-        addr.sll_halen = ETH_ALEN;
-        std::memcpy(addr.sll_addr, destMac, ETH_ALEN);
-
-        const ssize_t sent = sendto(socket_, frame, offset, 0, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
-        if (sent < 0)
-        {
-            LOG_ERROR("Send failed: " + std::string(strerror(errno)));
-        }
-        else
-        {
-            LOG_INFO("Sent ASDU frame of " + std::to_string(sent) + " bytes");
-        }
+        sendFrame(writer.data(), writer.size(), destMac);
     }
     catch (const std::exception& e)
     {
         LOG_ERROR("Exception in sendASDU: " + std::string(e.what()));
+        throw;
     }
 }

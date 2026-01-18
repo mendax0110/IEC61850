@@ -26,7 +26,7 @@ const std::string& SampledValueControlBlock::getMulticastAddress() const
     return multicastAddress_;
 }
 
-void SampledValueControlBlock::setAppId(uint16_t appId)
+void SampledValueControlBlock::setAppId(const uint16_t appId)
 {
     appId_ = appId;
 }
@@ -36,7 +36,7 @@ uint16_t SampledValueControlBlock::getAppId() const
     return appId_;
 }
 
-void SampledValueControlBlock::setSmpRate(uint16_t rate)
+void SampledValueControlBlock::setSmpRate(const uint16_t rate)
 {
     smpRate_ = rate;
 }

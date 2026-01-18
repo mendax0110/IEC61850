@@ -25,11 +25,25 @@ int main(int argc, char* argv[])
 
     std::cout << "Starting client, listening for 10 seconds..." << std::endl;
     client->start();
+    std::cout << "Receiving sampled value frames..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
+    std::cout << "Stopping client..." << std::endl;
     client->stop();
 
     const auto received = client->receiveSampledValues();
     std::cout << "Received " << received.size() << " ASDU frames total." << std::endl;
+
+    if (received.empty())
+    {
+        std::cout << "No ASDU frames received." << std::endl;
+    }
+    else
+    {
+        for (const auto& asdu : received)
+        {
+            std::cout << "Received ASDU: " << asdu.svID << " with " << asdu.dataSet.size() << " values" << std::endl;
+        }
+    }
 
     return 0;
 }

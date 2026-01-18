@@ -24,7 +24,8 @@ int main(int argc, char* argv[])
     model->addLogicalNode(ln);
 
     const auto svcb = sv::SampledValueControlBlock::create("SV01");
-    svcb->setMulticastAddress("01:0C:CD:01:00:01");
+    //svcb->setMulticastAddress("01:0C:CD:01:00:01");
+    svcb->setMulticastAddress("ff:ff:ff:ff:ff:ff");
     svcb->setAppId(0x4000);
     svcb->setSmpRate(4000);
     ln->addSampledValueControlBlock(svcb);
