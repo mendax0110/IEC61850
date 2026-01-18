@@ -50,7 +50,7 @@ namespace sv
          * @brief Gets the model.
          * @return The IED model.
          */
-        IedModel::Ptr getModel() const;
+        [[nodiscard]] IedModel::Ptr getModel() const;
 
     private:
         /**

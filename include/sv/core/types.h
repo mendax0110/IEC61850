@@ -9,11 +9,12 @@
 /// @brief sv namespace \namespace sv
 namespace sv
 {
-    // IEC 61850 SV Constants
+    /// @brief IEC 61850 SV Constants
     constexpr uint16_t SV_ETHER_TYPE = 0x88BA;
     constexpr uint16_t DEFAULT_APP_ID = 0x4000;
     constexpr uint16_t DEFAULT_SMP_RATE = 4000;
 
+    /// @brief Timestamp type representing nanosecond precision time points.
     using Timestamp = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
 
     /// @brief Quality structure representing data quality flags. \struct Quality

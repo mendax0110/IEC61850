@@ -2,6 +2,7 @@
 #include <thread>
 #include <string>
 
+#include "sv/core/mac.h"
 #include "sv/model/IedModel.h"
 #include "sv/model/IedServer.h"
 #include "sv/model/LogicalNode.h"
@@ -24,8 +25,17 @@ int main(int argc, char* argv[])
     model->addLogicalNode(ln);
 
     const auto svcb = sv::SampledValueControlBlock::create("SV01");
-    //svcb->setMulticastAddress("01:0C:CD:01:00:01");
-    svcb->setMulticastAddress("ff:ff:ff:ff:ff:ff");
+    const auto mac = sv::MacAddress::tryParse("01:0C:CD:04:00:01");
+    if (mac.has_value())
+    {
+        svcb->setMulticastAddress(mac.value().toString());
+        std::cout << "Multicast MAC: " << mac.value() << std::endl;
+    }
+    else
+    {
+        std::cerr << "Error: Invalid MAC address format" << std::endl;
+        return 1;
+    }
     svcb->setAppId(0x4000);
     svcb->setSmpRate(4000);
     ln->addSampledValueControlBlock(svcb);

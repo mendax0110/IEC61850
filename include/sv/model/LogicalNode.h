@@ -30,7 +30,7 @@ namespace sv
          * @brief Gets the name of the logical node.
          * @return The name.
          */
-        const std::string& getName() const;
+        [[nodiscard]] const std::string& getName() const;
 
         /**
          * @brief Adds a SampledValueControlBlock to this logical node.
