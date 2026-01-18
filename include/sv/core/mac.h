@@ -143,9 +143,9 @@ namespace sv
         {
             std::ostringstream oss;
             oss << std::hex << std::setfill('0');
-            if (!uppercase)
+            if (uppercase)
             {
-                oss << std::nouppercase;
+                oss << std::uppercase;
             }
 
             for (size_t i = 0; i < LENGTH; ++i)
