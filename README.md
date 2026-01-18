@@ -1,6 +1,6 @@
 # IEC61850 Sampled Values Implementation
 
-This project implements IEC 61850 Sampled Values (SV) in C++17, using modern design patterns and clean architecture.
+This project implements IEC 61850 Sampled Values (SV) in C++20, using modern design patterns and clean architecture.
 
 ## Dependencies
 
