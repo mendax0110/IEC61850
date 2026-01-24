@@ -39,7 +39,7 @@ std::string sv::getFirstEthernetInterface()
         IfAddrGuard& operator=(const IfAddrGuard&) = delete;
     } guard(ifaddr);
 
-    for (ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
+    for (const ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
     {
         if (ifa->ifa_addr == nullptr) continue;
         if (ifa->ifa_addr->sa_family != AF_PACKET) continue;  // eth

@@ -55,7 +55,7 @@ EthernetNetworkSender::EthernetNetworkSender(std::string interface)
     }
 }
 
-std::array<uint8_t, 6> EthernetNetworkSender::parseMacAddress(const std::string& macStr) const
+std::array<uint8_t, 6> EthernetNetworkSender::parseMacAddress(const std::string& macStr)
 {
     std::array<uint8_t, 6> mac{};
     std::istringstream iss(macStr);

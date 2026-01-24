@@ -114,7 +114,7 @@ namespace sv
          * @param macStr The MAC address string.
          * @return The MAC address as an array of bytes.
          */
-        [[nodiscard]] std::array<uint8_t, 6> parseMacAddress(const std::string& macStr) const;
+        [[nodiscard]] static std::array<uint8_t, 6> parseMacAddress(const std::string& macStr) ;
 
         /**
          * @brief Gets the source MAC address of the interface.
