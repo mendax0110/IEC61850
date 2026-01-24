@@ -39,9 +39,65 @@ int main(int argc, char* argv[])
     }
     else
     {
-        for (const auto& asdu : received)
+        for (size_t i = 0; i < received.size(); ++i)
         {
-            std::cout << "Received ASDU: " << asdu.svID << " with " << asdu.dataSet.size() << " values" << std::endl;
+            const auto& asdu = received[i];
+            std::cout << "\n=== ASDU Frame " << (i + 1) << " ===" << std::endl;
+            std::cout << "SV ID: " << asdu.svID << std::endl;
+            std::cout << "Sample Count: " << asdu.smpCnt << std::endl;
+            std::cout << "Configuration Revision: " << asdu.confRev << std::endl;
+
+            std::string synchStr;
+            switch (asdu.smpSynch)
+            {
+                case sv::SmpSynch::None: synchStr = "None"; break;
+                case sv::SmpSynch::Local: synchStr = "Local"; break;
+                case sv::SmpSynch::Global: synchStr = "Global"; break;
+                default: synchStr = "Unknown"; break;
+            }
+            std::cout << "Synchronization: " << synchStr << std::endl;
+
+            std::cout << "Dataset (" << asdu.dataSet.size() << " values):" << std::endl;
+
+            if (asdu.dataSet.size() >= 4)
+            {
+                std::cout << "  Currents (scaled by " << sv::ScalingFactors::CURRENT_DEFAULT << "):" << std::endl;
+                for (size_t j = 0; j < 4; ++j)
+                {
+                    const auto& av = asdu.dataSet[j];
+                    const int32_t val = av.getScaledInt();
+                    const float actual = static_cast<float>(val) / sv::ScalingFactors::CURRENT_DEFAULT;
+
+                    std::cout << "      I" << j << std::setw(10) << val
+                                << " (actual: " << std::fixed << std::setprecision(3) << actual << " A)"
+                                << " [Quality: " << (av.quality.isGood() ? "Good" : "Bad") << "]" << std::endl;
+                }
+            }
+
+            if (asdu.dataSet.size() >= 8)
+            {
+                std::cout << "  Voltages (scaled by " << sv::ScalingFactors::VOLTAGE_DEFAULT << "):" << std::endl;
+                for (size_t j = 4; j < 8; ++j)
+                {
+                    const auto& av = asdu.dataSet[j];
+                    const int32_t val = av.getScaledInt();
+                    const float actual = static_cast<float>(val) / sv::ScalingFactors::VOLTAGE_DEFAULT;
+
+                    std::cout << "      U" << (j - 4) << std::setw(10) << val
+                                << " (actual: " << std::fixed << std::setprecision(3) << actual << " V)"
+                                << " [Quality: " << (av.quality.isGood() ? "Good" : "Bad") << "]" << std::endl;
+                }
+            }
+
+            if (asdu.gmIdentity.has_value())
+            {
+                std::cout << "Grandmaster Identity: ";
+                for (const auto byte : asdu.gmIdentity.value())
+                {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
+                }
+                std::cout << std::dec << std::endl;
+            }
         }
     }
 

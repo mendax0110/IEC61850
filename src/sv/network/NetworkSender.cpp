@@ -170,6 +170,16 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
         const auto srcMac = getSourceMacAddress();
         writer.writeBytes(srcMac.data(), srcMac.size());
 
+        constexpr uint16_t vlanId = 0;
+        constexpr uint8_t userPriority = 4;
+
+        if constexpr (vlanId > 0)
+        {
+            writer.writeUint16(VLAN_TAG_TPID);
+            constexpr uint16_t tci = (static_cast<uint16_t>(userPriority) << 13) | (vlanId & 0x0FFF);
+            writer.writeUint16(tci);
+        }
+
         // ehternet type
         writer.writeUint16(SV_ETHER_TYPE);
 
@@ -179,8 +189,14 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
         const size_t lengthPos = writer.size();
         writer.writeUint16(0);
 
+        constexpr  uint16_t reserved1 = 0x0000;
+        writer.writeUint16(reserved1);
+
         // reversed (2 bytes)
-        writer.writeUint16(0);
+        writer.writeUint16(0x0000);
+
+        const uint8_t numASDUs = 1;
+        writer.writeUint8(numASDUs);
 
         // PDU: ASDU, svID 64 bytes
         writer.writeFixedString(asdu.svID, 64);
@@ -192,31 +208,51 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
         writer.writeUint32(asdu.confRev);
 
         // smpSynch
-        writer.writeUint8(asdu.smpSynch ? 1 : 0);
+        writer.writeUint8(static_cast<uint8_t>(asdu.smpSynch));
+
+        if (asdu.gmIdentity.has_value())
+        {
+            writer.writeBytes(asdu.gmIdentity->data(), asdu.gmIdentity->size());
+        }
 
         // dataSet values
-        for (const auto& [value, quality] : asdu.dataSet)
+        for (const auto& analogValue : asdu.dataSet)
         {
-            if (std::holds_alternative<int16_t>(value))
+            if (std::holds_alternative<int32_t>(analogValue.value))
             {
-                writer.writeInt16(std::get<int16_t>(value));
+                const int32_t val = std::get<int32_t>(analogValue.value);
+                writer.writeInt32(val);
             }
-            else if (std::holds_alternative<float>(value))
+            else if (std::holds_alternative<uint32_t>(analogValue.value))
             {
-                writer.writeFloat(std::get<float>(value));
+                const uint32_t val = std::get<uint32_t>(analogValue.value);
+                writer.writeUint32(val);
+            }
+            else if (std::holds_alternative<float>(analogValue.value))
+            {
+                const float val = std::get<float>(analogValue.value);
+                writer.writeFloat(val);
+            }
+            else
+            {
+                throw std::invalid_argument("Unsupported AnalogValue type in ASDU dataSet");
             }
 
-            const uint8_t qualityByte = (quality.validity ? 0x80 : 0) | (quality.overflow ? 0x40 : 0);
-            writer.writeUint8(qualityByte);
+            const uint32_t qualityRaw = analogValue.quality.toRaw();
+            writer.writeUint32(qualityRaw);
         }
+
 
         const auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(asdu.timestamp.time_since_epoch()).count();
         writer.writeUint64(static_cast<uint64_t>(ts));
 
-        const uint16_t length = static_cast<uint16_t>(writer.size() - 14);
+        const uint16_t length = static_cast<uint16_t>(writer.size() - lengthPos - 2);
         writer.writeUint16At(lengthPos, length);
 
         sendFrame(writer.data(), writer.size(), destMac);
+
+        LOG_INFO("Sent SV frame: ASDU svID=" + asdu.svID + ", smpCnt="
+                + std::to_string(asdu.smpCnt) + ", length=" + std::to_string(writer.size()) + " bytes");
     }
     catch (const std::exception& e)
     {

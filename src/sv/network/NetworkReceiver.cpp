@@ -170,6 +170,17 @@ std::string EthernetNetworkReceiver::formatMacAddress(const std::array<uint8_t, 
     return oss.str();
 }
 
+std::string smpSynchToString(const SmpSynch synch)
+{
+    switch (synch)
+    {
+        case SmpSynch::None: return "None";
+        case SmpSynch::Local: return "Local";
+        case SmpSynch::Global: return "Global";
+        default: return "Unknown";
+    }
+}
+
 std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t> &buffer, const size_t length)
 {
     constexpr size_t MIN_SV_FRAME_SIZE = 14 + 8; // Ethernet header + minimum SV size
@@ -180,67 +191,119 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
         return std::nullopt;
     }
 
-    // check eth type
-    BufferReader reader(buffer);
-    reader.skip(12); // skip dest and src mac
-
-    const uint16_t etherType = reader.readUint16();
-    if (etherType != SV_ETHER_TYPE)
+    try
     {
+        BufferReader reader(buffer);
+        reader.skip(12);
+
+        uint16_t etherType = reader.readUint16();
+        if (etherType == sv::VLAN_TAG_TPID)
+        {
+            reader.skip(2);
+            etherType = reader.readUint16();
+        }
+
+        if (etherType != sv::SV_ETHER_TYPE)
+        {
+            LOG_ERROR("Not an SV frame, etherType=0x" + [](const uint16_t et)
+            {
+                std::ostringstream oss;
+                oss << std::hex << std::setw(4) << std::setfill('0') << et;
+                return oss.str();
+            }(etherType));
+            return std::nullopt;
+        }
+
+        [[maybe_unused]] const uint16_t appId = reader.readUint16();
+        [[maybe_unused]] const uint16_t svLength = reader.readUint16();
+
+        reader.skip(4);
+
+        const uint8_t numASDUs = reader.readUint8();
+        if (numASDUs == 0 || numASDUs > MAX_ASDUS_PER_MESSAGE)
+        {
+            LOG_ERROR("Invalid number of ASDUs: " + std::to_string(numASDUs));
+            return std::nullopt;
+        }
+
+        ASDU asdu;
+
+        // Read svID (64 bytes fixed length, null-padded)
+        asdu.svID = reader.readFixedString(64);
+
+        const size_t nullPos = asdu.svID.find('\0');
+        if (nullPos != std::string::npos)
+        {
+            asdu.svID.erase(nullPos);
+        }
+
+        while (!asdu.svID.empty() && asdu.svID.back() == ' ')
+        {
+            asdu.svID.pop_back();
+        }
+
+        asdu.smpCnt = reader.readUint16();
+        asdu.confRev = reader.readUint32();
+
+        const uint8_t synchValue = reader.readUint8();
+
+        switch (synchValue)
+        {
+            case 0: asdu.smpSynch = SmpSynch::None; break;
+            case 1: asdu.smpSynch = SmpSynch::Local; break;
+            case 2: asdu.smpSynch = SmpSynch::Global; break;
+            default:
+                LOG_ERROR("Invalid SmpSynch value: " + std::to_string(synchValue));
+                asdu.smpSynch = SmpSynch::None; break;
+        }
+
+        constexpr size_t EXPECTED_VALUES = VALUES_PER_ASDU;
+        for (size_t i = 0; i < EXPECTED_VALUES && reader.remaining() >= 8; ++i)
+        {
+            AnalogValue analogValue;
+            const int32_t value = reader.readInt32();
+            analogValue.value = value;
+
+            const uint32_t qualityRaw = reader.readUint32();
+            analogValue.quality = Quality(qualityRaw);
+
+            asdu.dataSet.push_back(analogValue);
+        }
+
+        if (asdu.dataSet.size() != EXPECTED_VALUES)
+        {
+            LOG_ERROR("Invalid number of values in ASDU: " + std::to_string(asdu.dataSet.size()) + ", expected: " + std::to_string(EXPECTED_VALUES));
+            return std::nullopt;
+        }
+
+        if (reader.remaining() >= 8)
+        {
+            const uint64_t ts = reader.readUint64();
+            asdu.timestamp = Timestamp(std::chrono::nanoseconds(ts));
+        }
+        else
+        {
+            asdu.timestamp = std::chrono::system_clock::now();
+            LOG_ERROR("Timestamp missing in ASDU, using current time");
+        }
+
+        if (!asdu.isValid())
+        {
+            LOG_ERROR("Parsed ASDU is not valid: svID='" + asdu.svID + "' (length=" + std::to_string(asdu.svID.length()) + ")");
+            return std::nullopt;
+        }
+
+        LOG_INFO("Parsed ASDU: svID=" + asdu.svID + ", smpCnt=" + std::to_string(asdu.smpCnt) +
+                 ", confRev=" + std::to_string(asdu.confRev) + ", smpSynch=" + smpSynchToString(asdu.smpSynch) +
+                 ", values=" + std::to_string(asdu.dataSet.size()));
+
+        return asdu;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("Exception while parsing ASDU: " + std::string(e.what()));
         return std::nullopt;
     }
-
-    // parse SV header
-    [[maybe_unused]] const uint16_t appId = reader.readUint16();
-    [[maybe_unused]] const uint16_t svLength = reader.readUint16();
-    reader.skip(2); // reserved
-
-    ASDU asdu;
-
-    // svID (64 bytes)
-    asdu.svID = reader.readFixedString(64);
-
-    // smpCnt
-    asdu.smpCnt = reader.readUint16();
-
-    // confRev
-    asdu.confRev = reader.readUint32();
-
-    // smpSynch
-    asdu.smpSynch = reader.readUint8() != 0;
-
-    // DataSet
-    constexpr int MAX_VALUES = 8;
-    for (int i = 0; i < MAX_VALUES && reader.remaining() >= 3; ++i)
-    {
-        AnalogValue val;
-
-        val.value = reader.readInt16();
-
-        const uint8_t quality = reader.readUint8();
-        val.quality.validity = (quality & 0x80) != 0;
-        val.quality.overflow = (quality & 0x40) != 0;
-
-        asdu.dataSet.push_back(val);
-    }
-
-    // Timestamp
-    if (reader.remaining() >= 8)
-    {
-        const uint64_t ts = reader.readUint64();
-        asdu.timestamp = Timestamp(std::chrono::nanoseconds(ts));
-    }
-    else
-    {
-        asdu.timestamp = std::chrono::system_clock::now();
-        LOG_ERROR("No timestamp in SV frame, using current time");
-    }
-
-    LOG_INFO("Parsed ASDU: svID=" + asdu.svID + " smpCnt=" + std::to_string(asdu.smpCnt) +
-             " confRev=" + std::to_string(asdu.confRev) + " smpSynch=" + (asdu.smpSynch ? "true" : "false") +
-             " values=" + std::to_string(asdu.dataSet.size()));
-
-    return asdu;
 }
 
 void EthernetNetworkReceiver::start(Callback callback)

@@ -117,47 +117,153 @@ TEST(SampledValueControlBlockTest, AllParameters)
     EXPECT_EQ(svcb->getDataSet(), "PhsMeas1");
 }
 
-TEST(TypesTest, AnalogValueInt16)
+// ===== Updated Tests for New Type System =====
+
+TEST(TypesTest, AnalogValueInt32)
 {
     sv::AnalogValue av;
-    av.value = static_cast<int16_t>(1234);
-    av.quality.validity = true;
+    av.value = static_cast<int32_t>(123456);
+    av.quality = sv::Quality(0);  // Good quality
+    av.quality.validity = 0;  // 00 = Good
     av.quality.overflow = false;
-    EXPECT_EQ(std::get<int16_t>(av.value), 1234);
-    EXPECT_TRUE(av.quality.validity);
+
+    EXPECT_EQ(std::get<int32_t>(av.value), 123456);
+    EXPECT_EQ(av.quality.validity, 0);
     EXPECT_FALSE(av.quality.overflow);
+    EXPECT_TRUE(av.quality.isGood());
+}
+
+TEST(TypesTest, AnalogValueUint32)
+{
+    sv::AnalogValue av;
+    av.value = static_cast<uint32_t>(987654);
+    av.quality = sv::Quality(0);
+    av.quality.validity = 1;  // 01 = Invalid
+    av.quality.overflow = false;
+
+    EXPECT_EQ(std::get<uint32_t>(av.value), 987654);
+    EXPECT_EQ(av.quality.validity, 1);
+    EXPECT_FALSE(av.quality.isGood());
 }
 
 TEST(TypesTest, AnalogValueFloat)
 {
     sv::AnalogValue av;
     av.value = 12.34f;
-    av.quality.validity = false;
+    av.quality = sv::Quality(0);
+    av.quality.validity = 0;  // Good
     av.quality.overflow = true;
+
     EXPECT_FLOAT_EQ(std::get<float>(av.value), 12.34f);
-    EXPECT_FALSE(av.quality.validity);
+    EXPECT_EQ(av.quality.validity, 0);
     EXPECT_TRUE(av.quality.overflow);
 }
 
 TEST(TypesTest, AnalogValueNegative)
 {
     sv::AnalogValue av;
-    av.value = static_cast<int16_t>(-5000);
-    EXPECT_EQ(std::get<int16_t>(av.value), -5000);
+    av.value = static_cast<int32_t>(-5000);
+    EXPECT_EQ(std::get<int32_t>(av.value), -5000);
+    EXPECT_EQ(av.getScaledInt(), -5000);
+}
+
+TEST(TypesTest, AnalogValueGetters)
+{
+    // Test getScaledInt()
+    sv::AnalogValue av1;
+    av1.value = static_cast<int32_t>(1000);
+    EXPECT_EQ(av1.getScaledInt(), 1000);
+
+    av1.value = static_cast<uint32_t>(2000);
+    EXPECT_EQ(av1.getScaledInt(), 2000);
+
+    av1.value = 3.5f;
+    EXPECT_EQ(av1.getScaledInt(), 3);
+
+    // Test getFloat()
+    sv::AnalogValue av2;
+    av2.value = static_cast<int32_t>(1000);
+    EXPECT_FLOAT_EQ(av2.getFloat(), 1000.0f);
+
+    av2.value = static_cast<uint32_t>(2000);
+    EXPECT_FLOAT_EQ(av2.getFloat(), 2000.0f);
+
+    av2.value = 3.5f;
+    EXPECT_FLOAT_EQ(av2.getFloat(), 3.5f);
 }
 
 TEST(TypesTest, QualityFlags)
 {
-    sv::Quality q{};
-    q.validity = true;
-    q.overflow = false;
-    EXPECT_TRUE(q.validity);
-    EXPECT_FALSE(q.overflow);
+    sv::Quality q(0);  // Initialize to all zeros
 
-    q.validity = false;
+    // Test validity field (2 bits)
+    q.validity = 0;  // Good
+    EXPECT_TRUE(q.isGood());
+
+    q.validity = 1;  // Invalid
+    EXPECT_FALSE(q.isGood());
+
+    q.validity = 3;  // Questionable
+    EXPECT_FALSE(q.isGood());
+
+    // Test other boolean flags
     q.overflow = true;
-    EXPECT_FALSE(q.validity);
     EXPECT_TRUE(q.overflow);
+
+    q.outOfRange = true;
+    EXPECT_TRUE(q.outOfRange);
+
+    q.badReference = true;
+    EXPECT_TRUE(q.badReference);
+
+    q.oscillatory = true;
+    EXPECT_TRUE(q.oscillatory);
+
+    q.failure = true;
+    EXPECT_TRUE(q.failure);
+
+    q.oldData = true;
+    EXPECT_TRUE(q.oldData);
+
+    q.inconsistent = true;
+    EXPECT_TRUE(q.inconsistent);
+
+    q.inaccurate = true;
+    EXPECT_TRUE(q.inaccurate);
+
+    q.source = true;  // Substituted
+    EXPECT_TRUE(q.source);
+
+    q.test = true;
+    EXPECT_TRUE(q.test);
+
+    q.operatorBlocked = true;
+    EXPECT_TRUE(q.operatorBlocked);
+
+    q.derived = true;
+    EXPECT_TRUE(q.derived);
+}
+
+TEST(TypesTest, QualityRawConversion)
+{
+    // Test conversion to/from raw uint32_t
+    sv::Quality q1(0x12345678);
+    EXPECT_EQ(q1.toRaw(), 0x12345678);
+
+    // Test that modifying fields updates raw value
+    sv::Quality q2(0);
+    q2.validity = 1;     // bit 0-1
+    q2.overflow = true;  // bit 2
+    q2.test = true;      // bit 11
+
+    const uint32_t raw = q2.toRaw();
+    EXPECT_NE(raw, 0);
+
+    // Reconstruct from raw and verify
+    sv::Quality q3(raw);
+    EXPECT_EQ(q3.validity, 1);
+    EXPECT_TRUE(q3.overflow);
+    EXPECT_TRUE(q3.test);
 }
 
 TEST(TypesTest, ASDUConstruction)
@@ -166,13 +272,14 @@ TEST(TypesTest, ASDUConstruction)
     asdu.svID = "TestSV";
     asdu.smpCnt = 100;
     asdu.confRev = 2;
-    asdu.smpSynch = true;
-    asdu.dataSet.resize(8);
+    asdu.smpSynch = sv::SmpSynch::Local;
+    asdu.dataSet.resize(sv::VALUES_PER_ASDU);
 
-    for (size_t i = 0; i < 8; ++i)
+    for (size_t i = 0; i < sv::VALUES_PER_ASDU; ++i)
     {
-        asdu.dataSet[i].value = static_cast<int16_t>(i * 100);
-        asdu.dataSet[i].quality.validity = true;
+        asdu.dataSet[i].value = static_cast<int32_t>(i * 1000);
+        asdu.dataSet[i].quality = sv::Quality(0);
+        asdu.dataSet[i].quality.validity = 0;
         asdu.dataSet[i].quality.overflow = false;
     }
 
@@ -181,8 +288,129 @@ TEST(TypesTest, ASDUConstruction)
     EXPECT_EQ(asdu.svID, "TestSV");
     EXPECT_EQ(asdu.smpCnt, 100);
     EXPECT_EQ(asdu.confRev, 2);
-    EXPECT_TRUE(asdu.smpSynch);
-    EXPECT_EQ(asdu.dataSet.size(), 8);
-    EXPECT_EQ(std::get<int16_t>(asdu.dataSet[0].value), 0);
-    EXPECT_EQ(std::get<int16_t>(asdu.dataSet[7].value), 700);
+    EXPECT_EQ(asdu.smpSynch, sv::SmpSynch::Local);
+    EXPECT_EQ(asdu.dataSet.size(), sv::VALUES_PER_ASDU);
+    EXPECT_EQ(std::get<int32_t>(asdu.dataSet[0].value), 0);
+    EXPECT_EQ(std::get<int32_t>(asdu.dataSet[7].value), 7000);
+    EXPECT_TRUE(asdu.isValid());
+}
+
+TEST(TypesTest, ASDUSynchronizationTypes)
+{
+    sv::ASDU asdu;
+    asdu.svID = "SyncTest";
+    asdu.smpCnt = 0;
+    asdu.confRev = 1;
+    asdu.dataSet.resize(sv::VALUES_PER_ASDU);
+
+    // Test None
+    asdu.smpSynch = sv::SmpSynch::None;
+    EXPECT_EQ(static_cast<uint8_t>(asdu.smpSynch), 0);
+
+    // Test Local
+    asdu.smpSynch = sv::SmpSynch::Local;
+    EXPECT_EQ(static_cast<uint8_t>(asdu.smpSynch), 1);
+
+    // Test Global
+    asdu.smpSynch = sv::SmpSynch::Global;
+    EXPECT_EQ(static_cast<uint8_t>(asdu.smpSynch), 2);
+}
+
+TEST(TypesTest, ASDUValidation)
+{
+    sv::ASDU asdu;
+
+    // Invalid: empty svID
+    asdu.svID = "";
+    asdu.dataSet.resize(sv::VALUES_PER_ASDU);
+    EXPECT_FALSE(asdu.isValid());
+
+    // Invalid: svID too short
+    asdu.svID = "X";
+    EXPECT_FALSE(asdu.isValid());
+
+    // Invalid: wrong number of values
+    asdu.svID = "Valid";
+    asdu.dataSet.resize(4);
+    EXPECT_FALSE(asdu.isValid());
+
+    // Valid
+    asdu.svID = "ValidSVID";
+    asdu.dataSet.resize(sv::VALUES_PER_ASDU);
+    EXPECT_TRUE(asdu.isValid());
+}
+
+TEST(TypesTest, ASDUWithGrandmasterIdentity)
+{
+    sv::ASDU asdu;
+    asdu.svID = "TestWithGM";
+    asdu.smpCnt = 0;
+    asdu.confRev = 1;
+    asdu.smpSynch = sv::SmpSynch::Global;
+    asdu.dataSet.resize(sv::VALUES_PER_ASDU);
+
+    // Add grandmaster identity
+    asdu.gmIdentity = std::array<uint8_t, 8>{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+
+    EXPECT_TRUE(asdu.gmIdentity.has_value());
+    EXPECT_EQ(asdu.gmIdentity.value()[0], 0x01);
+    EXPECT_EQ(asdu.gmIdentity.value()[7], 0x08);
+}
+
+TEST(TypesTest, SVMessageValidation)
+{
+    sv::SVMessage msg;
+
+    // Invalid: no ASDUs
+    EXPECT_FALSE(msg.isValid());
+
+    // Invalid: too many ASDUs
+    msg.asdus.resize(sv::MAX_ASDUS_PER_MESSAGE + 1);
+    EXPECT_FALSE(msg.isValid());
+
+    // Invalid: APPID out of range
+    msg.asdus.resize(1);
+    msg.appID = 0x3FFF;  // Below APP_ID_MIN
+    EXPECT_FALSE(msg.isValid());
+
+    msg.appID = 0x8000;  // Above APP_ID_MAX
+    EXPECT_FALSE(msg.isValid());
+
+    // Valid message
+    msg.appID = sv::DEFAULT_APP_ID;
+    msg.asdus[0].svID = "TestSV";
+    msg.asdus[0].dataSet.resize(sv::VALUES_PER_ASDU);
+    EXPECT_TRUE(msg.isValid());
+}
+
+TEST(TypesTest, ScalingFactors)
+{
+    EXPECT_EQ(sv::ScalingFactors::CURRENT_DEFAULT, 1000);
+    EXPECT_EQ(sv::ScalingFactors::VOLTAGE_DEFAULT, 100);
+}
+
+TEST(TypesTest, PublisherConfig)
+{
+    sv::PublisherConfig config;
+
+    // Check defaults
+    EXPECT_EQ(config.userPriority, 4);
+    EXPECT_EQ(config.vlanID, 0);
+    EXPECT_EQ(config.appID, sv::DEFAULT_APP_ID);
+    EXPECT_FALSE(config.simulate);
+    EXPECT_EQ(config.smpSynch, sv::SmpSynch::None);
+    EXPECT_EQ(config.currentScaling, sv::ScalingFactors::CURRENT_DEFAULT);
+    EXPECT_EQ(config.voltageScaling, sv::ScalingFactors::VOLTAGE_DEFAULT);
+    EXPECT_EQ(config.dataType, sv::DataType::INT32);
+}
+
+TEST(TypesTest, SubscriberConfig)
+{
+    sv::SubscriberConfig config;
+
+    // Check defaults
+    EXPECT_EQ(config.appID, sv::DEFAULT_APP_ID);
+    EXPECT_EQ(config.currentScaling, sv::ScalingFactors::CURRENT_DEFAULT);
+    EXPECT_EQ(config.voltageScaling, sv::ScalingFactors::VOLTAGE_DEFAULT);
+    EXPECT_EQ(config.dataType, sv::DataType::INT32);
 }

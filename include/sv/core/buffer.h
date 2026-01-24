@@ -58,6 +58,15 @@ namespace sv
         }
 
         /**
+         * @brief Writes an int32_t to the buffer in big-endian order.
+         * @param value The int32_t value to write.
+         */
+        void writeInt32(const int32_t value)
+        {
+            writeUint32(static_cast<uint32_t>(value));
+        }
+
+        /**
          * @brief Writes a uint64_t to the buffer in big-endian order.
          * @param value The uint64_t value to write.
          */
@@ -321,6 +330,15 @@ namespace sv
         int16_t readInt16()
         {
             return static_cast<int16_t>(readUint16());
+        }
+
+        /**
+         * @brief Reads an int32_t from the buffer in big-endian order.
+         * @return A int32_t value read.
+         */
+        int32_t readInt32()
+        {
+            return static_cast<int32_t>(readUint32());
         }
 
         /**

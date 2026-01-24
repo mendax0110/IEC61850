@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <string>
+#include <math.h>
 
 #include "sv/core/mac.h"
 #include "sv/model/IedModel.h"
@@ -50,19 +51,46 @@ int main(int argc, char* argv[])
     std::cout << "Starting server..." << std::endl;
     server->start();
 
-    std::vector<sv::AnalogValue> values(8);
-    for (int i = 0; i < 8; ++i)
-    {
-        values[i].value = static_cast<int16_t>(i * 100);
-        values[i].quality.validity = true;
-        values[i].quality.overflow = false;
-    }
-
+    std::vector<sv::AnalogValue> values(sv::VALUES_PER_ASDU);
     std::cout << "Sending 10 sampled value frames..." << std::endl;
-    for (int i = 0; i < 10; ++i)
+    for (int frame = 0; frame < 10; ++frame)
     {
+        const double time = frame * 0.001;
+        constexpr double freq = 50.0;
+        constexpr double omega = 2.0 * M_PI * freq;
+
+        constexpr double currentAmplitude = 100.0;
+        values[0].value = static_cast<int32_t>(currentAmplitude * std::sin(omega * time) * sv::ScalingFactors::CURRENT_DEFAULT);
+        values[1].value = static_cast<int32_t>(currentAmplitude * std::sin(omega * time - (2.0 * M_PI / 3.0)) * sv::ScalingFactors::CURRENT_DEFAULT);
+        values[2].value = static_cast<int32_t>(currentAmplitude * std::sin(omega * time + (2.0 * M_PI / 3.0)) * sv::ScalingFactors::CURRENT_DEFAULT);
+        values[3].value = static_cast<int32_t>(0);
+
+        constexpr double voltageAmplitude = 230.0;
+        values[4].value = static_cast<int32_t>(voltageAmplitude * std::sin(omega * time) * sv::ScalingFactors::VOLTAGE_DEFAULT);
+        values[5].value = static_cast<int32_t>(voltageAmplitude * std::sin(omega * time - (2.0 * M_PI / 3.0)) * sv::ScalingFactors::VOLTAGE_DEFAULT);
+        values[6].value = static_cast<int32_t>(voltageAmplitude * std::sin(omega * time + (2.0 * M_PI / 3.0)) * sv::ScalingFactors::VOLTAGE_DEFAULT);
+        values[7].value = static_cast<int32_t>(0);
+
+        for (auto& val : values)
+        {
+            val.quality = sv::Quality(0);
+            val.quality.validity = 0;
+            val.quality.overflow = false;
+            val.quality.outOfRange = false;
+            val.quality.badReference = false;
+            val.quality.oscillatory = false;
+            val.quality.failure = false;
+            val.quality.oldData = false;
+            val.quality.inconsistent = false;
+            val.quality.inaccurate = false;
+            val.quality.source = false;
+            val.quality.test = false;
+            val.quality.operatorBlocked = false;
+            val.quality.derived = false;
+        }
+
         server->updateSampledValue(svcb, values);
-        std::cout << "  Frame " << (i + 1) << "/10 sent" << std::endl;
+        std::cout << "Sent frame " << (frame + 1) << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
 

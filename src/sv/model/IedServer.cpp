@@ -89,9 +89,28 @@ void IedServer::updateSampledValue(const std::shared_ptr<SampledValueControlBloc
         static std::atomic<uint16_t> smpCnt{0};
         asdu.smpCnt = smpCnt.fetch_add(1);
         asdu.confRev = 1;
-        asdu.smpSynch = true;
+        asdu.smpSynch = SmpSynch::Local;
         asdu.dataSet = values;
+
+        if (asdu.dataSet.size() != VALUES_PER_ASDU)
+        {
+            LOG_ERROR("Invalid number of values for ASDU: " + std::to_string(asdu.dataSet.size()) + ", expected: " + std::to_string(VALUES_PER_ASDU));
+            return;
+        }
+
+        if (asdu.smpSynch == SmpSynch::Global)
+        {
+            LOG_INFO("Global synchronization not implemented, defaulting to Local");
+            asdu.smpSynch = SmpSynch::Local;
+        }
+
         asdu.timestamp = std::chrono::system_clock::now();
+
+        if (!asdu.isValid())
+        {
+            LOG_ERROR("ASDU is not valid");
+            return;
+        }
 
         if (sender_)
         {
