@@ -37,8 +37,43 @@ int main(int argc, char* argv[])
         std::cerr << "Error: Invalid MAC address format" << std::endl;
         return 1;
     }
+
     svcb->setAppId(0x4000);
     svcb->setSmpRate(4000);
+    svcb->setConfRev(1);
+    svcb->setDataSet("PhsMeas1");
+    svcb->setSmpSynch(sv::SmpSynch::Local);
+    svcb->setSamplesPerPeriod(sv::SamplesPerPeriod::SPP_80);
+    svcb->setSignalFrequency(sv::SignalFrequency::FREQ_50_HZ);
+    svcb->setVlanId(0);
+    svcb->setUserPriority(4);
+    svcb->setSimulate(false);
+    svcb->setDataType(sv::DataType::INT32);
+    svcb->setCurrentScaling(sv::ScalingFactors::CURRENT_DEFAULT);
+    svcb->setVoltageScaling(sv::ScalingFactors::VOLTAGE_DEFAULT);
+
+    std::cout << "\n=== SVCB Configuration ===" << std::endl;
+    std::cout << "  svID: " << svcb->getName() << std::endl;
+    std::cout << "  AppID: " << std::hex << svcb->getAppId() << std::dec << std::endl;
+    std::cout << "  Sample Rate: " << svcb->getSmpRate() << " Hz" << std::endl;
+    std::cout << "  Sample/Period: " << static_cast<int>(svcb->getSamplesPerPeriod()) << std::endl;
+    std::cout << "  Signal Frequency: " << static_cast<int>(svcb->getSignalFrequency()) / 10.0 << " Hz" << std::endl;
+    std::cout << "  Synchronization: ";
+    switch (svcb->getSmpSynch())
+    {
+        case sv::SmpSynch::None: std::cout << "None"; break;
+        case sv::SmpSynch::Local: std::cout << "Local"; break;
+        case sv::SmpSynch::Global: std::cout << "Global"; break;
+        default: std::cout << "Unknown"; break;
+    }
+    std::cout << std::endl;
+    std::cout << "  User Priority: " << static_cast<int>(svcb->getUserPriority()) << std::endl;
+    std::cout << "  VLAN ID: " << svcb->getVlanId() << (svcb->getVlanId() == 0 ? " (no VLAN)" : "") << std::endl;
+    std::cout << "  Simulate: " << (svcb->getSimulate() ? "Yes" : "No") << std::endl;
+    std::cout << "  Current Scaling: " << svcb->getCurrentScaling() << std::endl;
+    std::cout << "  Voltage Scaling: " << svcb->getVoltageScaling() << std::endl;
+    std::cout << "=========================" << std::endl;
+
     ln->addSampledValueControlBlock(svcb);
 
     const auto server = sv::IedServer::create(model, interface);
@@ -53,23 +88,24 @@ int main(int argc, char* argv[])
 
     std::vector<sv::AnalogValue> values(sv::VALUES_PER_ASDU);
     std::cout << "Sending 10 sampled value frames..." << std::endl;
-    for (int frame = 0; frame < 10; ++frame)
+    for (int frame = 0; frame < 20; ++frame)
     {
-        const double time = frame * 0.001;
-        constexpr double freq = 50.0;
-        constexpr double omega = 2.0 * M_PI * freq;
+        const auto samplesPerPeriod = static_cast<double>(svcb->getSamplesPerPeriod());
+        const double frequency = static_cast<double>(svcb->getSignalFrequency()) / 10.0;
+        const double time = frame / (samplesPerPeriod * frequency);
+        const double omega = 2.0 * M_PI * frequency;
 
         constexpr double currentAmplitude = 100.0;
         values[0].value = static_cast<int32_t>(currentAmplitude * std::sin(omega * time) * sv::ScalingFactors::CURRENT_DEFAULT);
         values[1].value = static_cast<int32_t>(currentAmplitude * std::sin(omega * time - (2.0 * M_PI / 3.0)) * sv::ScalingFactors::CURRENT_DEFAULT);
         values[2].value = static_cast<int32_t>(currentAmplitude * std::sin(omega * time + (2.0 * M_PI / 3.0)) * sv::ScalingFactors::CURRENT_DEFAULT);
-        values[3].value = static_cast<int32_t>(0);
+        values[3].value = 0;
 
         constexpr double voltageAmplitude = 230.0;
         values[4].value = static_cast<int32_t>(voltageAmplitude * std::sin(omega * time) * sv::ScalingFactors::VOLTAGE_DEFAULT);
         values[5].value = static_cast<int32_t>(voltageAmplitude * std::sin(omega * time - (2.0 * M_PI / 3.0)) * sv::ScalingFactors::VOLTAGE_DEFAULT);
         values[6].value = static_cast<int32_t>(voltageAmplitude * std::sin(omega * time + (2.0 * M_PI / 3.0)) * sv::ScalingFactors::VOLTAGE_DEFAULT);
-        values[7].value = static_cast<int32_t>(0);
+        values[7].value = 0;
 
         for (auto& val : values)
         {
@@ -90,7 +126,18 @@ int main(int argc, char* argv[])
         }
 
         server->updateSampledValue(svcb, values);
-        std::cout << "Sent frame " << (frame + 1) << std::endl;
+
+        if (frame % 5 == 0)
+        {
+            const int32_t currentVal = values[0].getScaledInt();
+            const int32_t voltageVal = values[4].getScaledInt();
+
+            std::cout << "Frame " << std::setw(2) << (frame + 1) << ": "
+                      << "Ia=" << std::setw(6) << currentVal / svcb->getCurrentScaling() << "A, "
+                      << "Va=" << std::setw(6) << voltageVal / svcb->getVoltageScaling() << "V"
+                      << std::endl;
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
 

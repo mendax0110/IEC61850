@@ -30,18 +30,27 @@ IedClient::IedClient(IedModel::Ptr model, std::string interface)
 
 void IedClient::start()
 {
+    start([this](const ASDU& asdu)
+    {
+        std::lock_guard<std::mutex> lock(receivedMutex_);
+        receivedASDUs_.push_back(asdu);
+        std::cout << "Received ASDU: " << asdu.svID << " with " << asdu.dataSet.size() << " values" << std::endl;
+    });
+}
+
+
+void IedClient::start(const ASDUCallback& callback)
+{
     try
     {
+        ASSERT(callback, "Callback is null");
+
         if (!receiver_)
         {
             receiver_ = EthernetNetworkReceiver::create(interface_);
         }
-        receiver_->start([this](const ASDU& asdu)
-        {
-            std::lock_guard<std::mutex> lock(receivedMutex_);
-            receivedASDUs_.push_back(asdu);
-            std::cout << "Received ASDU: " << asdu.svID << " with " << asdu.dataSet.size() << " values" << std::endl;
-        });
+
+        receiver_->start(callback);
     }
     catch (const std::exception& e)
     {

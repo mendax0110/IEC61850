@@ -12,7 +12,15 @@ namespace sv
     class IedClient
     {
     public:
+        /**
+         * @brief Shared pointer type for IedClient.
+         */
         using Ptr = std::shared_ptr<IedClient>;
+
+        /**
+         * @brief Callback type for received ASDUs.
+         */
+        using ASDUCallback = std::function<void(const ASDU&)>;
 
         /**
          * @brief Creates a new IedClient.
@@ -23,7 +31,13 @@ namespace sv
         static Ptr create(IedModel::Ptr model, const std::string& interface = "");
 
         /**
-         * @brief Starts the client.
+         * @brief Starts the client with a custom callback.
+         * @param callback Function to call for each received ASDU.
+         */
+        void start(const ASDUCallback& callback);
+
+        /**
+         * @brief Starts the client with default callback (stores ASDUs).
          */
         void start();
 

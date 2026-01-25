@@ -204,4 +204,68 @@ namespace sv
         int32_t voltageScaling = ScalingFactors::VOLTAGE_DEFAULT;
         DataType dataType = DataType::INT32;
     };
+
+    /**
+     * @brief Converts SmpSynch enum to string.
+     * @param synch The SmpSynch value.
+     * @return A string representation of the SmpSynch.
+     */
+    inline std::string smpSynchToString(const SmpSynch synch)
+    {
+        switch (synch)
+        {
+            case SmpSynch::None: return "None";
+            case SmpSynch::Local: return "Local";
+            case SmpSynch::Global: return "Global";
+            default: return "Unknown";
+        }
+    }
+
+    /**
+     * @brief Converts DataType enum to string.
+     * @param type The DataType value.
+     * @return A string representation of the DataType.
+     */
+    inline std::string dataTypeToString(const DataType type)
+    {
+        switch (type)
+        {
+            case DataType::INT32: return "INT32";
+            case DataType::UINT32: return "UINT32";
+            case DataType::FLOAT32: return "FLOAT32";
+            default: return "Unknown";
+        }
+    }
+
+    /**
+     * @brief Converts SamplesPerPeriod enum to string.
+     * @param spp The SamplesPerPeriod value.
+     * @return A string representation of the SamplesPerPeriod.
+     */
+    inline std::string samplesPerPeriodToString(const SamplesPerPeriod spp)
+    {
+        switch (spp)
+        {
+            case SamplesPerPeriod::SPP_80: return "80";
+            case SamplesPerPeriod::SPP_256: return "256";
+            default: return "Unknown";
+        }
+    }
+
+    /**
+     * @brief Converts SignalFrequency enum to string.
+     * @param freq The SignalFrequency value.
+     * @return A string representation of the SignalFrequency.
+     */
+    inline std::string signalFrequencyToString(const SignalFrequency freq)
+    {
+        switch (freq)
+        {
+            case SignalFrequency::FREQ_16_7_HZ: return "16.7 Hz";
+            case SignalFrequency::FREQ_25_HZ: return "25 Hz";
+            case SignalFrequency::FREQ_50_HZ: return "50 Hz";
+            case SignalFrequency::FREQ_60_HZ: return "60 Hz";
+            default: return "Unknown";
+        }
+    }
 }

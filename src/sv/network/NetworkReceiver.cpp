@@ -170,20 +170,9 @@ std::string EthernetNetworkReceiver::formatMacAddress(const std::array<uint8_t, 
     return oss.str();
 }
 
-std::string smpSynchToString(const SmpSynch synch)
-{
-    switch (synch)
-    {
-        case SmpSynch::None: return "None";
-        case SmpSynch::Local: return "Local";
-        case SmpSynch::Global: return "Global";
-        default: return "Unknown";
-    }
-}
-
 std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t> &buffer, const size_t length)
 {
-    constexpr size_t MIN_SV_FRAME_SIZE = 14 + 8; // Ethernet header + minimum SV size
+    constexpr size_t MIN_SV_FRAME_SIZE = 14 + 8;
 
     if (length < MIN_SV_FRAME_SIZE)
     {
@@ -194,30 +183,38 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
     try
     {
         BufferReader reader(buffer);
-        reader.skip(12);
+        reader.skip(12);  // Skip dest and src MAC
 
+        // Check for VLAN tag...
         uint16_t etherType = reader.readUint16();
+        uint16_t vlanId = 0;
+        uint8_t priority = 0;
+
         if (etherType == sv::VLAN_TAG_TPID)
         {
-            reader.skip(2);
+            // Parses VLAN TCI...
+            const uint16_t tci = reader.readUint16();
+            priority = (tci >> 13) & 0x07;
+            vlanId = tci & 0x0FFF;
             etherType = reader.readUint16();
+            LOG_INFO("VLAN tag detected: ID=" + std::to_string(vlanId) + ", Priority=" + std::to_string(priority));
         }
 
         if (etherType != sv::SV_ETHER_TYPE)
         {
-            LOG_ERROR("Not an SV frame, etherType=0x" + [](const uint16_t et)
-            {
-                std::ostringstream oss;
-                oss << std::hex << std::setw(4) << std::setfill('0') << et;
-                return oss.str();
-            }(etherType));
             return std::nullopt;
         }
 
-        [[maybe_unused]] const uint16_t appId = reader.readUint16();
+        // Parse SV header
+        const uint16_t appId = reader.readUint16();
         [[maybe_unused]] const uint16_t svLength = reader.readUint16();
 
-        reader.skip(4);
+        // Reserved 1 - contains simulate bit
+        const uint16_t reserved1 = reader.readUint16();
+        const bool simulate = (reserved1 & 0x8000) != 0;
+
+        // Reserved 2
+        reader.skip(2);
 
         const uint8_t numASDUs = reader.readUint8();
         if (numASDUs == 0 || numASDUs > MAX_ASDUS_PER_MESSAGE)
@@ -228,15 +225,15 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
 
         ASDU asdu;
 
-        // Read svID (64 bytes fixed length, null-padded)
+        // Parse svID (64 bytes, null-padded)
         asdu.svID = reader.readFixedString(64);
 
+        // Trim null bytes and spaces
         const size_t nullPos = asdu.svID.find('\0');
         if (nullPos != std::string::npos)
         {
             asdu.svID.erase(nullPos);
         }
-
         while (!asdu.svID.empty() && asdu.svID.back() == ' ')
         {
             asdu.svID.pop_back();
@@ -245,8 +242,8 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
         asdu.smpCnt = reader.readUint16();
         asdu.confRev = reader.readUint32();
 
+        // Parse smpSynch
         const uint8_t synchValue = reader.readUint8();
-
         switch (synchValue)
         {
             case 0: asdu.smpSynch = SmpSynch::None; break;
@@ -254,25 +251,25 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
             case 2: asdu.smpSynch = SmpSynch::Global; break;
             default:
                 LOG_ERROR("Invalid SmpSynch value: " + std::to_string(synchValue));
-                asdu.smpSynch = SmpSynch::None; break;
+                asdu.smpSynch = SmpSynch::None;
+                break;
         }
 
+        // Parse dataset (8 values: I0-I3, V0-V3)
         constexpr size_t EXPECTED_VALUES = VALUES_PER_ASDU;
         for (size_t i = 0; i < EXPECTED_VALUES && reader.remaining() >= 8; ++i)
         {
             AnalogValue analogValue;
             const int32_t value = reader.readInt32();
             analogValue.value = value;
-
             const uint32_t qualityRaw = reader.readUint32();
             analogValue.quality = Quality(qualityRaw);
-
             asdu.dataSet.push_back(analogValue);
         }
 
         if (asdu.dataSet.size() != EXPECTED_VALUES)
         {
-            LOG_ERROR("Invalid number of values in ASDU: " + std::to_string(asdu.dataSet.size()) + ", expected: " + std::to_string(EXPECTED_VALUES));
+            LOG_ERROR("Invalid number of values: " + std::to_string(asdu.dataSet.size()));
             return std::nullopt;
         }
 
@@ -284,24 +281,33 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
         else
         {
             asdu.timestamp = std::chrono::system_clock::now();
-            LOG_ERROR("Timestamp missing in ASDU, using current time");
+            LOG_ERROR("Timestamp missing, using current time");
         }
 
         if (!asdu.isValid())
         {
-            LOG_ERROR("Parsed ASDU is not valid: svID='" + asdu.svID + "' (length=" + std::to_string(asdu.svID.length()) + ")");
+            LOG_ERROR("Parsed ASDU invalid: svID='" + asdu.svID + "' (len=" + std::to_string(asdu.svID.length()) + ")");
             return std::nullopt;
         }
 
-        LOG_INFO("Parsed ASDU: svID=" + asdu.svID + ", smpCnt=" + std::to_string(asdu.smpCnt) +
-                 ", confRev=" + std::to_string(asdu.confRev) + ", smpSynch=" + smpSynchToString(asdu.smpSynch) +
+        LOG_INFO("Parsed SV: svID=" + asdu.svID +
+                 ", smpCnt=" + std::to_string(asdu.smpCnt) +
+                 ", confRev=" + std::to_string(asdu.confRev) +
+                 ", synch=" + smpSynchToString(asdu.smpSynch) +
+                 ", appID=0x" + [](uint16_t id) {
+                     std::ostringstream oss;
+                     oss << std::hex << id;
+                     return oss.str();
+                 }(appId) +
+                 (vlanId > 0 ? ", VLAN=" + std::to_string(vlanId) : "") +
+                 ", simulate=" + (simulate ? "true" : "false") +
                  ", values=" + std::to_string(asdu.dataSet.size()));
 
         return asdu;
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Exception while parsing ASDU: " + std::string(e.what()));
+        LOG_ERROR("Exception parsing ASDU: " + std::string(e.what()));
         return std::nullopt;
     }
 }

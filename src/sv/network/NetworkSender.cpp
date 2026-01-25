@@ -159,65 +159,83 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
     {
         ASSERT(svcb, "SVCB is null");
         ASSERT(!asdu.svID.empty(), "ASDU svID is empty");
+        ASSERT(asdu.dataSet.size() == VALUES_PER_ASDU, "ASDU must contain exactly 8 values");
 
         BufferWriter writer(1500);
 
-        // dest mac address from multicast address
+        // Ethernet Layer 2 Header....
+
         const auto destMac = parseMacAddress(svcb->getMulticastAddress());
         writer.writeBytes(destMac.data(), destMac.size());
 
-        // source mac
         const auto srcMac = getSourceMacAddress();
         writer.writeBytes(srcMac.data(), srcMac.size());
 
-        constexpr uint16_t vlanId = 0;
-        constexpr uint8_t userPriority = 4;
+        const uint16_t vlanId = svcb->getVlanId();
+        const uint8_t userPriority = svcb->getUserPriority();
 
-        if constexpr (vlanId > 0)
+        if (vlanId > 0)
         {
             writer.writeUint16(VLAN_TAG_TPID);
-            constexpr uint16_t tci = (static_cast<uint16_t>(userPriority) << 13) | (vlanId & 0x0FFF);
+            // TCI (Tag Control Information): 3 bits priority + 1 bit CFI + 12 bits VID
+            const uint16_t tci = (static_cast<uint16_t>(userPriority) << 13) | (vlanId & 0x0FFF);
             writer.writeUint16(tci);
         }
 
-        // ehternet type
+        // Ethertype for SV protocol
         writer.writeUint16(SV_ETHER_TYPE);
 
-        // appID
+        // SV Protocol Header....
+
+        // APPID from SVCB
         writer.writeUint16(svcb->getAppId());
 
+        // Length field - will be updated later
         const size_t lengthPos = writer.size();
-        writer.writeUint16(0);
+        writer.writeUint16(0);  // Placeholder
 
-        constexpr  uint16_t reserved1 = 0x0000;
+        // Reserved 1 (2 bytes) - includes Simulate bit
+        // Bit 15: Simulate flag
+        const bool simulate = svcb->getSimulate();
+        const uint16_t reserved1 = simulate ? 0x8000 : 0x0000;
         writer.writeUint16(reserved1);
 
-        // reversed (2 bytes)
+        // Reserved 2 (2 bytes) - Reserved Security
         writer.writeUint16(0x0000);
 
+        // APDU....
+
+        // Number of ASDUs (typically 1)
         const uint8_t numASDUs = 1;
         writer.writeUint8(numASDUs);
 
-        // PDU: ASDU, svID 64 bytes
+        // ASDU....
+
+        // svID (64 bytes fixed length, null-padded)
         writer.writeFixedString(asdu.svID, 64);
 
         // smpCnt
         writer.writeUint16(asdu.smpCnt);
 
-        // confRev
-        writer.writeUint32(asdu.confRev);
+        // confRev from SVCB
+        writer.writeUint32(svcb->getConfRev());
 
-        // smpSynch
-        writer.writeUint8(static_cast<uint8_t>(asdu.smpSynch));
+        // smpSynch from SVCB (can be overridden by ASDU if needed)
+        const SmpSynch synch = svcb->getSmpSynch();
+        writer.writeUint8(static_cast<uint8_t>(synch));
 
-        if (asdu.gmIdentity.has_value())
+        // gmIdentity (optional, 8 bytes) - from SVCB if configured
+        const auto gmIdentity = svcb->getGrandmasterIdentity();
+        if (gmIdentity.has_value())
         {
-            writer.writeBytes(asdu.gmIdentity->data(), asdu.gmIdentity->size());
+            writer.writeBytes(gmIdentity->data(), gmIdentity->size());
         }
 
-        // dataSet values
+        ASSERT(asdu.dataSet.size() == VALUES_PER_ASDU, "Invalid dataset size");
+
         for (const auto& analogValue : asdu.dataSet)
         {
+            // write value based on configured data type...
             if (std::holds_alternative<int32_t>(analogValue.value))
             {
                 const int32_t val = std::get<int32_t>(analogValue.value);
@@ -235,13 +253,12 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
             }
             else
             {
-                throw std::invalid_argument("Unsupported AnalogValue type in ASDU dataSet");
+                throw std::runtime_error("Unsupported value type in ASDU dataset");
             }
 
             const uint32_t qualityRaw = analogValue.quality.toRaw();
             writer.writeUint32(qualityRaw);
         }
-
 
         const auto ts = std::chrono::duration_cast<std::chrono::nanoseconds>(asdu.timestamp.time_since_epoch()).count();
         writer.writeUint64(static_cast<uint64_t>(ts));
@@ -251,8 +268,12 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
 
         sendFrame(writer.data(), writer.size(), destMac);
 
-        LOG_INFO("Sent SV frame: ASDU svID=" + asdu.svID + ", smpCnt="
-                + std::to_string(asdu.smpCnt) + ", length=" + std::to_string(writer.size()) + " bytes");
+        LOG_INFO("Sent SV frame: svID=" + asdu.svID +
+                 ", smpCnt=" + std::to_string(asdu.smpCnt) +
+                 ", confRev=" + std::to_string(svcb->getConfRev()) +
+                 ", synch=" + smpSynchToString(synch) +
+                 ", simulate=" + (simulate ? "true" : "false") +
+                 ", size=" + std::to_string(writer.size()) + " bytes");
     }
     catch (const std::exception& e)
     {

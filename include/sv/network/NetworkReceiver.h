@@ -6,6 +6,7 @@
 #include <thread>
 #include <atomic>
 #include "sv/core/types.h"
+#include "sv/model/SampledValueControlBlock.h"
 
 /// @brief sv namespace \namespace sv
 namespace sv

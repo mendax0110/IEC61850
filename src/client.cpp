@@ -1,5 +1,6 @@
 #include "sv/model/IedClient.h"
 #include "sv/model/IedModel.h"
+#include "sv/visualize/SVVisualizer.h"
 #include <iostream>
 #include <string>
 #include <thread>
@@ -23,12 +24,19 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    //auto viz = sv::SVVisualizer::create(sv::SVVisualizer::Mode::RealTime, "sv_data.csv");
+
     std::cout << "Starting client, listening for 10 seconds..." << std::endl;
     client->start();
+    /*client->start([&viz](const sv::ASDU& asdu)
+    {
+        viz->update(asdu);
+    });*/
     std::cout << "Receiving sampled value frames..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
     std::cout << "Stopping client..." << std::endl;
     client->stop();
+    //viz->close();
 
     const auto received = client->receiveSampledValues();
     std::cout << "Received " << received.size() << " ASDU frames total." << std::endl;
@@ -39,7 +47,25 @@ int main(int argc, char* argv[])
     }
     else
     {
-        for (size_t i = 0; i < received.size(); ++i)
+        std::cout << "\n=== Received ASDU Details ===" << std::endl;
+        std::cout << "Total frames: " << received.size() << std::endl;
+        std::cout << "First smpCnt: " << received.front().smpCnt << std::endl;
+        std::cout << "Last smpCnt: " << received.back().smpCnt << std::endl;
+
+        int missing = 0;
+        for (size_t i = 1; i < received.size(); ++i)
+        {
+            uint16_t expected = (received[i-1].smpCnt + 1) & 0xFFFF;
+            if (received[i].smpCnt != expected)
+            {
+                missing++;
+            }
+        }
+        std::cout << "Missing frames (based on smpCnt): " << missing << std::endl;
+        std::cout << "==============================" << std::endl;
+
+        const size_t framesToShow = std::min(received.size(), static_cast<size_t>(3));
+        for (size_t i = 0; i <framesToShow; ++i)
         {
             const auto& asdu = received[i];
             std::cout << "\n=== ASDU Frame " << (i + 1) << " ===" << std::endl;
@@ -71,6 +97,19 @@ int main(int argc, char* argv[])
                     std::cout << "      I" << j << std::setw(10) << val
                                 << " (actual: " << std::fixed << std::setprecision(3) << actual << " A)"
                                 << " [Quality: " << (av.quality.isGood() ? "Good" : "Bad") << "]" << std::endl;
+
+                    if (!av.quality.isGood())
+                    {
+                        std::cout << "        Quality Flags: ";
+                        const uint32_t qRaw = av.quality.toRaw();
+                        for (int bit = 0; bit < 32; ++bit)
+                        {
+                            if (qRaw & (1 << bit))
+                            {
+                                std::cout << "Bit" << bit << " ";
+                            }
+                        }
+                    }
                 }
             }
 
@@ -86,6 +125,19 @@ int main(int argc, char* argv[])
                     std::cout << "      U" << (j - 4) << std::setw(10) << val
                                 << " (actual: " << std::fixed << std::setprecision(3) << actual << " V)"
                                 << " [Quality: " << (av.quality.isGood() ? "Good" : "Bad") << "]" << std::endl;
+
+                    if (!av.quality.isGood())
+                    {
+                        std::cout << "        Quality Flags: ";
+                        const uint32_t qRaw = av.quality.toRaw();
+                        for (int bit = 0; bit < 32; ++bit)
+                        {
+                            if (qRaw & (1 << bit))
+                            {
+                                std::cout << "Bit" << bit << " ";
+                            }
+                        }
+                    }
                 }
             }
 
@@ -98,6 +150,16 @@ int main(int argc, char* argv[])
                 }
                 std::cout << std::dec << std::endl;
             }
+
+            const auto duration = asdu.timestamp.time_since_epoch();
+            const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+            std::cout << "Timestamp (ns since epoch): " << ns << std::endl;
+            std::cout << "==========================" << std::endl;
+        }
+
+        if (received.size() > framesToShow)
+        {
+            std::cout << "\n... (only first " << framesToShow << " frames shown)" << std::endl;
         }
     }
 
