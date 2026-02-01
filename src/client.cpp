@@ -74,10 +74,17 @@ int main(int argc, char* argv[])
 
             if (frameCount % 20 == 0)
             {
+                const int32_t rawIa = asdu.dataSet[0].getScaledInt();
+                const int32_t rawIb = asdu.dataSet[1].getScaledInt();
+                const int32_t rawIc = asdu.dataSet[2].getScaledInt();
+
                 std::cout << "Frame " << std::setw(4) << frameCount
                           << ": Ia=" << std::setw(7) << std::fixed << std::setprecision(1) << ia << "A"
+                          << " (raw=" << rawIa << ")"
                           << ", Ib=" << std::setw(7) << std::fixed << std::setprecision(1) << ib << "A"
+                          << " (raw=" << rawIb << ")"
                           << ", Ic=" << std::setw(7) << std::fixed << std::setprecision(1) << ic << "A"
+                          << " (raw=" << rawIc << ")"
                           << ", smpCnt=" << std::setw(5) << asdu.smpCnt;
 
                 if (asdu.smpSynch == sv::SmpSynch::Global && asdu.gmIdentity.has_value())

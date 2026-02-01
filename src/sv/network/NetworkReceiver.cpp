@@ -259,12 +259,28 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
         constexpr size_t EXPECTED_VALUES = VALUES_PER_ASDU;
         for (size_t i = 0; i < EXPECTED_VALUES && reader.remaining() >= 8; ++i)
         {
+            const size_t currentPos = reader.position();
             AnalogValue analogValue;
             const int32_t value = reader.readInt32();
             analogValue.value = value;
             const uint32_t qualityRaw = reader.readUint32();
             analogValue.quality = Quality(qualityRaw);
             asdu.dataSet.push_back(analogValue);
+
+            if (i == 0)
+            {
+                LOG_INFO("ASDU[0] at offset " + std::to_string(currentPos) +
+                         ": value=" + std::to_string(value) +
+                         " (0x" + [](int32_t v) {
+                             std::ostringstream oss;
+                             oss << std::hex << std::setw(8) << std::setfill('0') << static_cast<uint32_t>(v);
+                             return oss.str();
+                         }(value) + "), quality=0x" + [](uint32_t q) {
+                             std::ostringstream oss;
+                             oss << std::hex << std::setw(8) << std::setfill('0') << q;
+                             return oss.str();
+                         }(qualityRaw));
+            }
         }
 
         if (asdu.dataSet.size() != EXPECTED_VALUES)
@@ -364,6 +380,17 @@ void EthernetNetworkReceiver::start(Callback callback)
                     oss << std::hex << std::setw(4) << std::setfill('0') << et;
                     return oss.str();
                 }(etherType) + " len=" + std::to_string(lenSize));
+
+                if (lenSize >= 106)
+                {
+                    std::ostringstream hexDump;
+                    hexDump << "Buffer[90-105]: ";
+                    for (size_t i = 90; i < 106 && i < lenSize; ++i)
+                    {
+                        hexDump << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(buffer[i]) << " ";
+                    }
+                    LOG_INFO(hexDump.str());
+                }
 
                 // Parse ASDU
                 auto asduOpt = parseASDU(buffer, lenSize);

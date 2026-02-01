@@ -215,8 +215,8 @@ DifferentialProtectionResult DifferentialProtection::update(const std::complex<d
         return result;
     }
 
-    const std::complex<double> operatingCurrent = current1A + current2A;
-    const std::complex<double> restraintCurrentComplex = (current1A - current2A) * 0.5;
+    const std::complex<double> operatingCurrent = current1A - current2A;
+    const std::complex<double> restraintCurrentComplex = (current1A + current2A) * 0.5;
 
     const double operatingMag = std::abs(operatingCurrent);
     const double restraintMag = std::abs(restraintCurrentComplex);

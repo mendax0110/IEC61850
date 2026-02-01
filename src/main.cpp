@@ -58,8 +58,8 @@ int main(int argc, char* argv[])
     svcb->setCurrentScaling(sv::ScalingFactors::CURRENT_DEFAULT);
     svcb->setVoltageScaling(sv::ScalingFactors::VOLTAGE_DEFAULT);
 
-    std::array<uint8_t, 8> gmIdentity = {0x00, 0x1B, 0x21, 0xFF, 0xFE, 0x12, 0x34, 0x56};
-    svcb->setGrandmasterIdentity(gmIdentity);
+    /*std::array<uint8_t, 8> gmIdentity = {0x00, 0x1B, 0x21, 0xFF, 0xFE, 0x12, 0x34, 0x56};
+    svcb->setGrandmasterIdentity(gmIdentity);*/
 
     std::cout << "\n=== SVCB Configuration ===" << std::endl;
     std::cout << "  svID: " << svcb->getName() << std::endl;
@@ -104,6 +104,7 @@ int main(int argc, char* argv[])
     distSettings.zone1.delay = std::chrono::milliseconds(0);
     distSettings.zone2.reachOhm = 1.5;
     distSettings.zone2.delay = std::chrono::milliseconds(300);
+    distSettings.zone3.enabled = false;
     distSettings.voltageThresholdV = 50.0;
     distSettings.currentThresholdA = 50.0;
     auto distanceProtection = sv::DistanceProtection::create(distSettings);
