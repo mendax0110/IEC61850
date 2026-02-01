@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <numeric>
+#include <cmath>
 
 using namespace sv::sim;
 
@@ -65,13 +66,13 @@ bool BreakerModel::isLocked() const
 
 bool BreakerModel::isInTransition() const
 {
-    const auto state = state_.load();
+    const auto state = state_.load(std::memory_order_acquire);
     return state == BreakerState::OPENING || state == BreakerState::CLOSING;
 }
 
 BreakerState BreakerModel::getState() const
 {
-    return state_.load();
+    return state_.load(std::memory_order_acquire);
 }
 
 bool BreakerModel::open()
@@ -181,10 +182,44 @@ double BreakerModel::getResistance() const
     }
     else if (isInTransition())
     {
-        // use algorightm std:: to make model for arc resistance
-        return definition_.resistanceOhm * 100.0;
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration<double>(now - transitionStartTime_).count();
+        const double progress = std::clamp(elapsed / transitionDuration_, 0.0, 1.0);
+        constexpr double arcResistanceMuliplier = 100.0;
+        const double baseResistance = definition_.resistanceOhm;
+        const double arcResistance = definition_.arcResistanceOhm;
+
+        if (isOpening())
+        {
+            return std::lerp(baseResistance, arcResistance, progress);
+        }
+        else
+        {
+            return std::lerp(arcResistance, baseResistance, progress);
+        }
+
     }
     return std::numeric_limits<double>::infinity();
+}
+
+double BreakerModel::getArcVoltage() const
+{
+    if (isInTransition() && std::abs(currentA_.load()) > 1.0)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = std::chrono::duration<double>(now - transitionStartTime_).count();
+
+        if (elapsed < definition_.arcDurationSec)
+        {
+            const double arcProgress = elapsed / definition_.arcDurationSec;
+            const double currentMagnitude = std::abs(currentA_.load());
+            const double arcLengthFactor = 1.0 + arcProgress * (definition_.contactGapMm / 10.0);
+
+            return definition_.arcVoltageV * arcLengthFactor * (currentMagnitude / definition_.maxCurrentA);
+        }
+    }
+
+    return 0.0;
 }
 
 double BreakerModel::getCurrent() const
@@ -192,7 +227,7 @@ double BreakerModel::getCurrent() const
     return currentA_.load();
 }
 
-void BreakerModel::setCurrent(double current)
+void BreakerModel::setCurrent(const double current)
 {
     currentA_.store(current);
 
@@ -204,7 +239,7 @@ void BreakerModel::setCurrent(double current)
 
 bool BreakerModel::isOverloaded() const
 {
-    return std::abs(currentA_.load() > definition_.maxCurrentA);
+    return std::abs(currentA_.load()) > definition_.maxCurrentA;
 }
 
 void BreakerModel::onStateChange(BreakerCallback callback)
@@ -287,11 +322,11 @@ void BreakerModel::transitionToState(const BreakerState newState)
 }
 
 SimulationResult BreakerModel::runSimulation(
-    double voltageV, double nominalCurrentA,
-    double faultCurrentA, double faultTimeS,
-    double durationS, double timeStepS)
+    const double voltageV, const double nominalCurrentA,
+    const double faultCurrentA, const double faultTimeS,
+    const double durationS, const double timeStepS)
 {
-    if (voltageV > 0.0 || nominalCurrentA < 0.0 || durationS <= 0.0 || timeStepS <= 0.0)
+    if (voltageV <= 0.0 || nominalCurrentA < 0.0 || durationS <= 0.0 || timeStepS <= 0.0)
     {
         throw std::invalid_argument("Invalid simulation parameters provided");
     }

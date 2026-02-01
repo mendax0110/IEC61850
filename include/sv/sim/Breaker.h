@@ -47,13 +47,19 @@ namespace sv::sim
         double voltageRatingV{400.0};
         double powerRatingW{400000.0};
         double arcDurationSec{0.020};
+        double arcVoltageV{50.0};
+        double arcResistanceOhm{0.1};
+        double contactGapMm{10.0};
+        double dielectricStrengthKVpm{3.0};
 
         /// @brief Validates the breaker definition
         bool isValid() const
         {
             return openTimeSec > 0.0 && closeTimeSec > 0.0 &&
                    resistanceOhm >= 0.0 && maxCurrentA > 0.0 &&
-                   voltageRatingV > 0.0 && powerRatingW > 0.0;
+                   voltageRatingV > 0.0 && powerRatingW > 0.0 &&
+                   arcVoltageV >= 0.0 && arcResistanceOhm >= 0.0 &&
+                   contactGapMm > 0.0 && dielectricStrengthKVpm > 0.0;
         }
     };
 
@@ -79,11 +85,14 @@ namespace sv::sim
 
         /**
          * @brief Creates a new BreakerModel with default definition
+         * @return Shared pointer to BreakerModel
          */
         static BreakerPtr create();
 
         /**
          * @brief Creates a new BreakerModel with custom definition
+         * @param definition BreakerDefinition struct
+         * @return Shared pointer to BreakerModel
          */
         static BreakerPtr create(const BreakerDefinition& definition);
 
@@ -127,27 +136,51 @@ namespace sv::sim
          */
         void trip();
 
+        /**
+         * @brief Gets the breaker definition
+         * @return BreakerDefinition struct
+         */
         [[nodiscard]] BreakerDefinition getDefinition() const;
+
+        /**
+         * @brief Sets the breaker definition
+         * @param definition BreakerDefinition struct
+         */
         void setDefinition(const BreakerDefinition& definition);
 
         /**
          * @brief Gets current resistance (very low when closed, infinite when open)
+         * @return Resistance in Ohms
          */
         [[nodiscard]] double getResistance() const;
 
         /**
+         * @brief Gets arc voltage during opening/closing transition
+         * @return Arc voltage in Volts
+         */
+        [[nodiscard]] double getArcVoltage() const;
+
+        /**
          * @brief Gets current flowing through breaker
+         * @return Current in Amperes
          */
         [[nodiscard]] double getCurrent() const;
+
+        /**
+         * @brief Sets current flowing through breaker
+         * @param current Current in Amperes
+         */
         void setCurrent(double current);
 
         /**
          * @brief Checks if breaker is overloaded
+         * @return true if current exceeds max rating
          */
         [[nodiscard]] bool isOverloaded() const;
 
         /**
          * @brief Registers callback for state changes
+         * @param callback Function to call on state change
          */
         void onStateChange(BreakerCallback callback);
 
@@ -176,8 +209,8 @@ namespace sv::sim
 
         BreakerModel(const BreakerModel&) = delete;
         BreakerModel& operator=(const BreakerModel&) = delete;
-        BreakerModel(BreakerModel&&) = delete;
-        BreakerModel& operator=(BreakerModel&&) = delete;
+        BreakerModel(BreakerModel&&) noexcept = delete;
+        BreakerModel& operator=(BreakerModel&&) noexcept = delete;
 
         void simulationLoop();
         void transitionToState(BreakerState newState);

@@ -1,9 +1,14 @@
 #include "sv/model/IedClient.h"
 #include "sv/model/IedModel.h"
 #include "sv/visualize/SVVisualizer.h"
+#include "sv/core/ptp.h"
+#include "sv/protection/Protection.h"
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <thread>
+#include <complex>
+#include <cmath>
 
 int main(int argc, char* argv[])
 {
@@ -24,19 +29,82 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    //auto viz = sv::SVVisualizer::create(sv::SVVisualizer::Mode::RealTime, "sv_data.csv");
+    sv::DifferentialProtectionSettings diffSettings;
+    diffSettings.slopePercent = 25.0;
+    diffSettings.minOperatingCurrentA = 0.3;
+    diffSettings.instantaneousThresholdA = 400.0;
+    auto differentialProtection = sv::DifferentialProtection::create(diffSettings);
+
+    differentialProtection->onTrip([](const sv::DifferentialProtectionResult& result)
+    {
+        std::cout << "\n*** DIFFERENTIAL PROTECTION TRIP ***" << std::endl;
+        std::cout << "  Operating Current: " << std::fixed << std::setprecision(2)
+                  << result.operatingCurrentA << " A" << std::endl;
+        std::cout << "  Restraint Current: " << std::fixed << std::setprecision(2)
+                  << result.restraintCurrentA << " A" << std::endl;
+        std::cout << "  Instantaneous: " << (result.instantaneous ? "YES" : "NO") << std::endl;
+    });
+
+    size_t frameCount = 0;
+    double maxCurrentA = 0.0;
+    double maxCurrentB = 0.0;
+    double maxCurrentC = 0.0;
 
     std::cout << "Starting client, listening for 10 seconds..." << std::endl;
-    client->start();
-    /*client->start([&viz](const sv::ASDU& asdu)
+    std::cout << "Monitoring with differential protection..." << std::endl;
+
+    client->start([&](const sv::ASDU& asdu)
     {
-        viz->update(asdu);
-    });*/
+        frameCount++;
+
+        if (asdu.dataSet.size() >= 8)
+        {
+            const double ia = static_cast<double>(asdu.dataSet[0].getScaledInt()) / sv::ScalingFactors::CURRENT_DEFAULT;
+            const double ib = static_cast<double>(asdu.dataSet[1].getScaledInt()) / sv::ScalingFactors::CURRENT_DEFAULT;
+            const double ic = static_cast<double>(asdu.dataSet[2].getScaledInt()) / sv::ScalingFactors::CURRENT_DEFAULT;
+
+            maxCurrentA = std::max(maxCurrentA, std::abs(ia));
+            maxCurrentB = std::max(maxCurrentB, std::abs(ib));
+            maxCurrentC = std::max(maxCurrentC, std::abs(ic));
+
+            const std::complex<double> current1(ia, 0.0);
+            const std::complex<double> current2(ia * 0.98, 0.0);
+
+            const auto diffResult = differentialProtection->update(current1, current2);
+
+            if (frameCount % 20 == 0)
+            {
+                std::cout << "Frame " << std::setw(4) << frameCount
+                          << ": Ia=" << std::setw(7) << std::fixed << std::setprecision(1) << ia << "A"
+                          << ", Ib=" << std::setw(7) << std::fixed << std::setprecision(1) << ib << "A"
+                          << ", Ic=" << std::setw(7) << std::fixed << std::setprecision(1) << ic << "A"
+                          << ", smpCnt=" << std::setw(5) << asdu.smpCnt;
+
+                if (asdu.smpSynch == sv::SmpSynch::Global && asdu.gmIdentity.has_value())
+                {
+                    std::cout << " [PTP Synced]";
+                }
+
+                std::cout << std::endl;
+            }
+        }
+    });
+
     std::cout << "Receiving sampled value frames..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(10));
-    std::cout << "Stopping client..." << std::endl;
+
+    std::cout << "\nStopping client..." << std::endl;
     client->stop();
-    //viz->close();
+
+    std::cout << "\n=== Session Statistics ===" << std::endl;
+    std::cout << "Frames processed by callback: " << frameCount << std::endl;
+    std::cout << "Max current Phase A: " << std::fixed << std::setprecision(2)
+              << maxCurrentA << " A" << std::endl;
+    std::cout << "Max current Phase B: " << std::fixed << std::setprecision(2)
+              << maxCurrentB << " A" << std::endl;
+    std::cout << "Max current Phase C: " << std::fixed << std::setprecision(2)
+              << maxCurrentC << " A" << std::endl;
+    std::cout << "==========================" << std::endl;
 
     const auto received = client->receiveSampledValues();
     std::cout << "Received " << received.size() << " ASDU frames total." << std::endl;
@@ -74,6 +142,17 @@ int main(int argc, char* argv[])
             std::cout << "Configuration Revision: " << asdu.confRev << std::endl;
 
             std::string synchStr;
+
+            if (asdu.gmIdentity.has_value())
+            {
+                std::cout << "Grandmaster ID: ";
+                for (const auto byte : asdu.gmIdentity.value())
+                {
+                    std::cout << std::hex << std::setw(2) << std::setfill('0')
+                              << static_cast<int>(byte) << std::dec;
+                }
+                std::cout << std::endl;
+            }
             switch (asdu.smpSynch)
             {
                 case sv::SmpSynch::None: synchStr = "None"; break;
