@@ -194,6 +194,16 @@ namespace sv::sim
          */
         void stopSimulation();
 
+        /**
+         * @brief Runs a automatic simulation of the Breaker.
+         * @param voltageV The voltage across the breaker in Volts.
+         * @param nominalCurrentA The nominal current through the breaker in Amperes.
+         * @param faultCurrentA The fault current through the breaker in Amperes.
+         * @param faultTimeS The time at which the fault occurs in seconds.
+         * @param durationS The total duration of the simulation in seconds.
+         * @param timeStepS The time step for the simulation in seconds (default is 0.001s).
+         * @return A struct representing the Simulationresult.
+         */
         SimulationResult runSimulation(
             double voltageV,
             double nominalCurrentA,
@@ -204,16 +214,37 @@ namespace sv::sim
         );
 
     private:
+
+        /**
+         * @brief Private constructor to enforce use of factory methods
+         */
         BreakerModel();
+
+        /**
+         * @brief Private constructor with definition
+         * @param definition BreakerDefinition struct
+         */
         explicit BreakerModel(const BreakerDefinition& definition);
 
+        /// @brief Deleted copy/move constructors and assignment operators
         BreakerModel(const BreakerModel&) = delete;
         BreakerModel& operator=(const BreakerModel&) = delete;
         BreakerModel(BreakerModel&&) noexcept = delete;
         BreakerModel& operator=(BreakerModel&&) noexcept = delete;
 
+        /**
+         * @brief Main simulation loop that updates breaker state over time
+         */
         void simulationLoop();
+
+        /**
+         * @brief Transitions the breaker to a new state and starts timing the transition
+         */
         void transitionToState(BreakerState newState);
+
+        /**
+         * @brief Updates the breaker state based on elapsed time and current conditions
+         */
         void updateState();
 
         std::atomic<BreakerState> state_{BreakerState::OPEN};
