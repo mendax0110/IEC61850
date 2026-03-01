@@ -162,7 +162,7 @@ namespace sv
          * @param angle The measured angle
          * @return A bool indicating if the zone is tripped
          */
-        [[nodiscard]] bool checkZone(const DistanceZone& zone, double impedance, double angle) const noexcept;
+        [[nodiscard]] static bool checkZone(const DistanceZone& zone, double impedance, double angle) noexcept;
 
         /**
          * @brief Checks the direction of the fault.
@@ -315,4 +315,159 @@ namespace sv
         std::mutex callbackMutex_;
     };
 
+    /// @brief Overcurrent curve types \enum OvercurrentCurveType
+    enum class OvercurrentCurveType : uint8_t
+    {
+        StandardInverse,
+        VeryInverse,
+        ExtremelyInverse,
+        LongTimeInverse,
+        DefiniteTime
+    };
+
+    /**
+     * @brief Converts an OvercurrentCurveType to a human-readable string.
+     * @param curve The overcurrent curve type to convert.
+     * @return A string representation of the overcurrent curve type.
+     */
+    inline std::string overcurrentCurveToString(const OvercurrentCurveType curve)
+    {
+        switch (curve)
+        {
+            case OvercurrentCurveType::StandardInverse: return "Standard Inverse (SI)";
+            case OvercurrentCurveType::VeryInverse: return "Very Inverse (VI)";
+            case OvercurrentCurveType::ExtremelyInverse: return "Extremely Inverse (EI)";
+            case OvercurrentCurveType::LongTimeInverse: return "Long Time Inverse (LTI)";
+            case OvercurrentCurveType::DefiniteTime: return "Definite Time (DT)";
+            default: return "Unknown";
+        }
+    }
+
+    /// @brief Overcurrent Protection Settings structure \struct OvercurrentProtectionSettings
+    struct OvercurrentProtectionSettings
+    {
+        double pickupCurrentA{100.0};
+        double timeMultiplier{1.0};
+        OvercurrentCurveType curveType{OvercurrentCurveType::StandardInverse};
+        std::chrono::milliseconds definiteTimeDelay{500};
+        bool enabled{true};
+
+        /**
+         * @brief Validates the overcurrent protection settings
+         * @return A bool indicating if the settings are valid
+         */
+        [[nodiscard]] constexpr bool isValid() const noexcept
+        {
+            return pickupCurrentA > 0.0 && timeMultiplier > 0.0;
+        }
+    };
+
+    /// @brief Overcurrent Protection Result structure \struct OvercurrentProtectionResult
+    struct OvercurrentProtectionResult
+    {
+        bool trip{false};
+        double measuredCurrentA{0.0};
+        double operatingTimeMs{0.0};
+        double elapsedTimeMs{0.0};
+        OvercurrentCurveType curveType{OvercurrentCurveType::StandardInverse};
+        std::chrono::steady_clock::time_point tripTime;
+    };
+
+    using OverCurrentTripCallback = std::function<void(const OvercurrentProtectionResult&)>;
+
+    class OvercurrentProtection
+    {
+    public:
+        using Ptr = std::shared_ptr<OvercurrentProtection>;
+
+        /**
+         * @brief Creates a new OvercurrentProtection instance
+         * @param settings struct with overcurrent protection settings
+         * @return A shared pointer to the created OvercurrentProtection
+         */
+        [[nodiscard]] static Ptr create(const OvercurrentProtectionSettings& settings = OvercurrentProtectionSettings());
+
+        ~OvercurrentProtection() = default;
+
+        OvercurrentProtection(const OvercurrentProtection&) = delete;
+        OvercurrentProtection& operator=(const OvercurrentProtection&) = delete;
+        OvercurrentProtection(OvercurrentProtection&&) noexcept = delete;
+        OvercurrentProtection& operator=(OvercurrentProtection&&) noexcept = delete;
+
+        /**
+         * @brief Updates the protection with a new current measurement
+         * @param currentMagnitudeA The magnitude of the current in amperes
+         * @return A OvercurrentProtectionResult with trip information
+         */
+        [[nodiscard]] OvercurrentProtectionResult update(double currentMagnitudeA);
+
+        /**
+         * @brief Resets the internal state of the protection
+         */
+        void reset();
+
+        /**
+         * @brief Sets the overcurrent protection settings
+         * @param settings The new overcurrent protection settings
+         */
+        void setSettings(const OvercurrentProtectionSettings& settings);
+
+        /**
+         * @brief Gets the current overcurrent protection settings
+         * @return A struct with the overcurrent protection settings
+         */
+        [[nodiscard]] OvercurrentProtectionSettings getSettings() const;
+
+        /**
+         * @brief Sets whether the protection is enabled
+         * @param enabled true to enable, false to disable
+         */
+        void setEnabled(bool enabled) noexcept;
+
+        /**
+         * @brief Checks if the protection is enabled
+         * @return A bool indicating if the protection is enabled
+         */
+        [[nodiscard]] bool isEnabled() const noexcept;
+
+        /**
+         * @brief Registers a callback for trip events
+         * @param callback The callback function to register
+         */
+        void onTrip(OverCurrentTripCallback callback);
+
+        /**
+         * @brief Calculates the operating time based on the current magnitude and the settings.
+         * @param currentMagnitudeA The magnitude of the current in amperes
+         * @return A double representing the operating time in milliseconds, or 0 if no trip should occur
+         */
+        [[nodiscard]] double calculateOperatingTimeMs(double currentMagnitudeA) const;
+
+    private:
+        /**
+         * @brief Constructor is private.
+         * @param settings A struct with the overcurrent protection settings
+         */
+        explicit OvercurrentProtection(const OvercurrentProtectionSettings& settings);
+
+        /**
+         * @brief Computes the operating time based on the curve type, time multiplier, and delay.
+         * @param multiple The multiple of the pickup current (currentMagnitudeA / pickupCurrentA)
+         * @param tms Time multiplier setting
+         * @param curve The overcurrent curve type
+         * @param dtDelay The definite time delay for Definite Time curve type
+         * @return A double representing the operating time in milliseconds, or 0 if no trip should occur
+         */
+        [[nodiscard]] static double computeCurveTimeMs(double multiple, double tms, OvercurrentCurveType curve, std::chrono::milliseconds dtDelay) noexcept;
+
+        OvercurrentProtectionSettings settings_;
+        mutable std::mutex settingsMutex_;
+
+        std::atomic<bool> enabled_{true};
+        std::atomic<bool> timing_{false};
+        std::chrono::steady_clock::time_point pickupStartTime_;
+
+        OverCurrentTripCallback callback_;
+        std::mutex callbackMutex_;
+    };
 }

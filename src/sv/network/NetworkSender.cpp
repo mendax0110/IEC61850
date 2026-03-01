@@ -206,7 +206,7 @@ void EthernetNetworkSender::sendASDU(const std::shared_ptr<SampledValueControlBl
         // APDU....
 
         // Number of ASDUs (typically 1)
-        const uint8_t numASDUs = 1;
+        constexpr uint8_t numASDUs = 1;
         writer.writeUint8(numASDUs);
 
         // ASDU....

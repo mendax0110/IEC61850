@@ -58,6 +58,12 @@ namespace sv
          */
         [[nodiscard]] IedModel::Ptr getModel() const;
 
+        /**
+         * @brief Sets a callback for raw frame data (used for pcap capture).
+         * @param callback A function to call with raw frame data (data pointer and length).
+         */
+        void setRawFrameCallback(NetworkReceiver::RawFrameCallback callback);
+
     private:
         /**
          * @brief Constructor is private. Use create() method.
@@ -71,5 +77,6 @@ namespace sv
         std::unique_ptr<NetworkReceiver> receiver_;
         std::vector<ASDU> receivedASDUs_;
         std::mutex receivedMutex_;
+        NetworkReceiver::RawFrameCallback rawFrameCallback_;
     };
 }

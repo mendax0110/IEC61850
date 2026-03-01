@@ -50,6 +50,11 @@ void IedClient::start(const ASDUCallback& callback)
             receiver_ = EthernetNetworkReceiver::create(interface_);
         }
 
+        if (rawFrameCallback_)
+        {
+            receiver_->setRawFrameCallback(rawFrameCallback_);
+        }
+
         receiver_->start(callback);
     }
     catch (const std::exception& e)
@@ -92,4 +97,9 @@ std::vector<ASDU> IedClient::receiveSampledValues()
 IedModel::Ptr IedClient::getModel() const
 {
     return model_;
+}
+
+void IedClient::setRawFrameCallback(NetworkReceiver::RawFrameCallback callback)
+{
+    rawFrameCallback_ = std::move(callback);
 }

@@ -14,7 +14,7 @@ IedModel::IedModel(std::string name)
 {
 }
 
-void IedModel::addLogicalNode(const LogicalNode::Ptr &ln)
+void IedModel::addLogicalNode(const LogicalNode::Ptr& ln)
 {
     logicalNodes_.push_back(ln);
 }

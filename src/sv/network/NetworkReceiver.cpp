@@ -158,7 +158,7 @@ void EthernetNetworkReceiver::enablePromiscuousMode() const
     }
 }
 
-std::string EthernetNetworkReceiver::formatMacAddress(const std::array<uint8_t, 6> &mac)
+std::string EthernetNetworkReceiver::formatMacAddress(const std::array<uint8_t, 6>& mac)
 {
     std::ostringstream oss;
     oss << std::hex << std::setfill('0');
@@ -170,7 +170,7 @@ std::string EthernetNetworkReceiver::formatMacAddress(const std::array<uint8_t, 
     return oss.str();
 }
 
-std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t> &buffer, const size_t length)
+std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t>& buffer, const size_t length)
 {
     constexpr size_t MIN_SV_FRAME_SIZE = 14 + 8;
 
@@ -271,7 +271,7 @@ std::optional<ASDU> EthernetNetworkReceiver::parseASDU(const std::vector<uint8_t
             {
                 LOG_INFO("ASDU[0] at offset " + std::to_string(currentPos) +
                          ": value=" + std::to_string(value) +
-                         " (0x" + [](int32_t v) {
+                         " (0x" + [](const int32_t v) {
                              std::ostringstream oss;
                              oss << std::hex << std::setw(8) << std::setfill('0') << static_cast<uint32_t>(v);
                              return oss.str();
@@ -392,6 +392,14 @@ void EthernetNetworkReceiver::start(Callback callback)
                     LOG_INFO(hexDump.str());
                 }
 
+                {
+                    std::lock_guard<std::mutex> lock(rawFrameMutex_);
+                    if (rawFrameCallback_)
+                    {
+                        rawFrameCallback_(buffer.data(), lenSize);
+                    }
+                }
+
                 // Parse ASDU
                 auto asduOpt = parseASDU(buffer, lenSize);
                 if (asduOpt.has_value())
@@ -420,4 +428,10 @@ void EthernetNetworkReceiver::stop()
     {
         receiveThread_.join();
     }
+}
+
+void EthernetNetworkReceiver::setRawFrameCallback(RawFrameCallback callback)
+{
+    std::lock_guard<std::mutex> lock(rawFrameMutex_);
+    rawFrameCallback_ = std::move(callback);
 }

@@ -172,12 +172,12 @@ void SVVisualizer::updateRealTime(const ASDU& asdu)
     std::cout.flush();
 }
 
-void SVVisualizer::updateStatistics(const ASDU &asdu)
+void SVVisualizer::updateStatistics(const ASDU& asdu)
 {
     // TODO AdrGos update counters...
 }
 
-void SVVisualizer::updateTable(const ASDU &asdu) const
+void SVVisualizer::updateTable(const ASDU& asdu) const
 {
     if (frameCount_ == 1)
     {

@@ -160,7 +160,7 @@ void DistanceProtection::onTrip(ProtectionTripCallback callback)
     callback_ = std::move(callback);
 }
 
-bool DistanceProtection::checkZone(const DistanceZone& zone, const double impedance, const double angle) const noexcept
+bool DistanceProtection::checkZone(const DistanceZone& zone, const double impedance, const double angle) noexcept
 {
     if (!zone.enabled || impedance > zone.reachOhm)
     {
@@ -304,4 +304,163 @@ bool DifferentialProtection::checkCharacteristic(const double operating, const d
 
     const double slopeThreshold = restraint * (settings_.slopePercent / 100.0);
     return operating >= slopeThreshold;
+}
+
+OvercurrentProtection::Ptr OvercurrentProtection::create(const OvercurrentProtectionSettings& settings)
+{
+    if (!settings.isValid())
+    {
+        throw std::invalid_argument("Invalid overcurrent protection settings");
+    }
+    return Ptr(new OvercurrentProtection(settings));
+}
+
+OvercurrentProtection::OvercurrentProtection(const OvercurrentProtectionSettings& settings)
+    : settings_(settings)
+{
+}
+
+double OvercurrentProtection::computeCurveTimeMs(const double multiple, const double tms, const OvercurrentCurveType curve, const std::chrono::milliseconds dtDelay) noexcept
+{
+    if (multiple <= 1.0)
+    {
+        return std::numeric_limits<double>::infinity();
+    }
+
+    double timeSeconds = 0.0;
+
+    // according to IEC 60255-151 equations...
+    switch (curve)
+    {
+        case OvercurrentCurveType::StandardInverse:
+            timeSeconds = tms * 0.14 / (std::pow(multiple, 0.02) - 1.0);
+            break;
+        case OvercurrentCurveType::VeryInverse:
+            timeSeconds = tms * 13.5 / (multiple - 1.0);
+            break;
+        case OvercurrentCurveType::ExtremelyInverse:
+            timeSeconds = tms * 80.0 / (multiple * multiple - 1.0);
+            break;
+        case OvercurrentCurveType::LongTimeInverse:
+            timeSeconds = tms * 120.0 / (multiple - 1.0);
+            break;
+        case OvercurrentCurveType::DefiniteTime:
+            return static_cast<double>(dtDelay.count());
+    }
+
+    return timeSeconds * 1000.0;
+}
+
+double OvercurrentProtection::calculateOperatingTimeMs(const double currentMagnitudeA) const
+{
+    std::lock_guard<std::mutex> lock(settingsMutex_);
+    const double multiple = currentMagnitudeA / settings_.pickupCurrentA;
+    return computeCurveTimeMs(multiple, settings_.timeMultiplier, settings_.curveType, settings_.definiteTimeDelay);
+}
+
+OvercurrentProtectionResult OvercurrentProtection::update(double currentMagnitudeA)
+{
+    OvercurrentProtectionResult result;
+    result.measuredCurrentA = currentMagnitudeA;
+
+    if (!enabled_.load(std::memory_order_acquire))
+    {
+        return result;
+    }
+
+    double pickupCurrentA;
+    double tms;
+    OvercurrentCurveType curve;
+    std::chrono::milliseconds dtDelay;
+    {
+        std::lock_guard<std::mutex> lock(settingsMutex_);
+        pickupCurrentA = settings_.pickupCurrentA;
+        tms = settings_.timeMultiplier;
+        curve = settings_.curveType;
+        dtDelay = settings_.definiteTimeDelay;
+    }
+
+    result.curveType = curve;
+
+    const double multiple = currentMagnitudeA / pickupCurrentA;
+
+    if (multiple <= 1.0)
+    {
+        if (timing_.load(std::memory_order_acquire))
+        {
+            timing_.store(false, std::memory_order_release);
+        }
+        return result;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+
+    if (!timing_.load(std::memory_order_acquire))
+    {
+        timing_.store(true, std::memory_order_release);
+        pickupStartTime_ = now;
+    }
+
+    const double operatingTimeMs = computeCurveTimeMs(multiple, tms, curve, dtDelay);
+    result.operatingTimeMs = operatingTimeMs;
+
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - pickupStartTime_);
+    result.elapsedTimeMs = static_cast<double>(elapsed.count());
+
+    if (static_cast<double>(elapsed.count()) >= operatingTimeMs)
+    {
+        result.trip = true;
+        result.tripTime = now;
+
+        timing_.store(false, std::memory_order_release);
+
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        if (callback_)
+        {
+            callback_(result);
+        }
+    }
+
+    return result;
+}
+
+void OvercurrentProtection::reset()
+{
+    timing_.store(false, std::memory_order_release);
+}
+
+void OvercurrentProtection::setSettings(const OvercurrentProtectionSettings& settings)
+{
+    if (!settings.isValid())
+    {
+        throw std::invalid_argument("Invalid overcurrent protection settings");
+    }
+    std::lock_guard<std::mutex> lock(settingsMutex_);
+    settings_ = settings;
+}
+
+OvercurrentProtectionSettings OvercurrentProtection::getSettings() const
+{
+    std::lock_guard<std::mutex> lock(settingsMutex_);
+    return settings_;
+}
+
+void OvercurrentProtection::setEnabled(const bool enabled) noexcept
+{
+    enabled_.store(enabled, std::memory_order_release);
+    if (!enabled)
+    {
+        reset();
+    }
+}
+
+bool OvercurrentProtection::isEnabled() const noexcept
+{
+    return enabled_.load(std::memory_order_acquire);
+}
+
+void OvercurrentProtection::onTrip(OverCurrentTripCallback callback)
+{
+    std::lock_guard<std::mutex> lock(callbackMutex_);
+    callback_ = std::move(callback);
 }

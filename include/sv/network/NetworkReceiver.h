@@ -75,6 +75,11 @@ namespace sv
         using Callback = std::function<void(const ASDU&)>;
 
         /**
+         * @brief Callback type for raw frame data (lated used by pcap).
+         */
+        using RawFrameCallback = std::function<void(const uint8_t* data, size_t length)>;
+
+        /**
          * @brief Virtual destructor.
          */
         virtual ~NetworkReceiver() = default;
@@ -89,6 +94,12 @@ namespace sv
          * @brief Stops receiving.
          */
         virtual void stop() = 0;
+
+        /**
+         * @brief Sets a callback for raw frame data.
+         * @param callback Function to call with raw frame data (data pointer and length).
+         */
+        virtual void setRawFrameCallback(RawFrameCallback callback) = 0;
     };
 
     /**
@@ -118,6 +129,12 @@ namespace sv
          * @brief Stops receiving.
          */
         void stop() override;
+
+        /**
+         * @brief Sets a callback for raw frame data.
+         * @param callback Function to call with raw frame data (data pointer and length).
+         */
+        void setRawFrameCallback(RawFrameCallback callback) override;
 
         /**
          * @brief Destructor override.
@@ -162,5 +179,7 @@ namespace sv
         int ifIndex_;
         std::atomic<bool> running_;
         std::thread receiveThread_;
+        RawFrameCallback rawFrameCallback_;
+        std::mutex rawFrameMutex_;
     };
 }

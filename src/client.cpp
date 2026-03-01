@@ -3,6 +3,7 @@
 #include "sv/visualize/SVVisualizer.h"
 #include "sv/core/ptp.h"
 #include "sv/protection/Protection.h"
+#include "sv/network/PcapWriter.h"
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -13,13 +14,41 @@
 int main(int argc, char* argv[])
 {
     std::string interface;
-    if (argc > 1)
+    std::string pcapFile;
+
+    for (int i = 1; i < argc; ++i)
     {
-        interface = argv[1];
+        const std::string arg = argv[i];
+        if (arg == "--pcap" && i + 1 < argc)
+        {
+            pcapFile = argv[++i];
+        }
+        else if (arg == "--interface" && i + 1 < argc)
+        {
+            interface = argv[++i];
+        }
+        else if (arg == "--help" || arg == "-h")
+        {
+            std::cout << "Usage: iec61850_client [options] [interface]\n"
+                        << "Options:\n"
+                        << "  --interface <name>   Specify network interface to listen on (default: auto-detect)\n"
+                        << "  --pcap <file>       Save captured frames to pcap file\n"
+                        << "  --help, -h          Show this help message\n";
+            return 0;
+        }
+        else if (interface.empty())
+        {
+            interface = arg;
+        }
     }
 
     std::cout << "IEC61850 SV Client Demo" << std::endl;
     std::cout << "Interface: " << (interface.empty() ? "(auto-detect)" : interface) << std::endl;
+
+    if (!pcapFile.empty())
+    {
+        std::cout << "Pcap capture:" << pcapFile << std::endl;
+    }
 
     const auto model = sv::IedModel::create("ClientModel");
     const auto client = sv::IedClient::create(model, interface);
@@ -28,6 +57,42 @@ int main(int argc, char* argv[])
         std::cerr << "Error: Failed to create client. Check interface name." << std::endl;
         return 1;
     }
+
+    std::unique_ptr<sv::PcapWriter> pcapWriter;
+    if (!pcapFile.empty())
+    {
+        try
+        {
+            pcapWriter = sv::PcapWriter::create(pcapFile);
+            client->setRawFrameCallback([&pcapWriter](const uint8_t* data, size_t length)
+            {
+                if (pcapWriter)
+                {
+                    pcapWriter->writeFrame(data, length);
+                }
+            });
+            std::cout << "Pcap capture enabled: " << pcapFile << std::endl;
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "Error: Failed to create pcap writer: " << e.what() << std::endl;
+        }
+    }
+
+    sv::OvercurrentProtectionSettings ocSettings;
+    ocSettings.pickupCurrentA = 200.0;
+    ocSettings.timeMultiplier = 0.5;
+    ocSettings.curveType = sv::OvercurrentCurveType::StandardInverse;
+    auto overcurrentProtection = sv::OvercurrentProtection::create(ocSettings);
+
+    overcurrentProtection->onTrip([](const sv::OvercurrentProtectionResult& result)
+    {
+        std::cout << "\n*** OVERCURRENT PROTECTION TRIP (PTOC) ***" << std::endl;
+        std::cout << "  Curve: " << sv::overcurrentCurveToString(result.curveType) << std::endl;
+        std::cout << "  Measured Current: " << std::fixed << std::setprecision(2) << result.measuredCurrentA << " A" << std::endl;
+        std::cout << "  Operating Time: " << std::fixed << std::setprecision(1) << result.operatingTimeMs << " ms" << std::endl;
+        std::cout << "  Elapsed Time: " << std::fixed << std::setprecision(1) << result.elapsedTimeMs << " ms" << std::endl;
+    });
 
     sv::DifferentialProtectionSettings diffSettings;
     diffSettings.slopePercent = 25.0;
@@ -72,6 +137,9 @@ int main(int argc, char* argv[])
 
             const auto diffResult = differentialProtection->update(current1, current2);
 
+            const double maxPhaseCurrent = std::max({std::abs(ia), std::abs(ib), std::abs(ic)});
+            const auto ocResult = overcurrentProtection->update(maxPhaseCurrent);
+
             if (frameCount % 20 == 0)
             {
                 const int32_t rawIa = asdu.dataSet[0].getScaledInt();
@@ -111,6 +179,12 @@ int main(int argc, char* argv[])
               << maxCurrentB << " A" << std::endl;
     std::cout << "Max current Phase C: " << std::fixed << std::setprecision(2)
               << maxCurrentC << " A" << std::endl;
+    if (pcapWriter)
+    {
+        std::cout << "Pcap packets captured: " << pcapWriter->getPacketCount() << std::endl;
+        pcapWriter->close();
+        std::cout << "Pcap file saved: " << pcapFile << std::endl;
+    }
     std::cout << "==========================" << std::endl;
 
     const auto received = client->receiveSampledValues();
